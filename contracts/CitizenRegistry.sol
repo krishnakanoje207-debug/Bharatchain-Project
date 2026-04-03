@@ -127,6 +127,14 @@ contract CitizenRegistry is AccessControl{
         emit CitizenApproved(citizenId, block.timestamp);
         return citizenId;
     }
+    // function for rejecting  the citizen
+    function rejectCitizen(uint256 citizenId) external onlyRole(ADMIN_ROLE) {
+        Citizen storage citizen = _citizens[citizenId];
+        require(citizen.walletAddress != address(0), "Citizen does not exist");// checking if citizen has address or not
+        require(citizen.status == CitizenStatus.Approved, "Citizen not approved");// checking if the citizen is already approved or not
+        citizen.status = CitizenStatus.Rejected;// if the above conditions are met then we change the status of citizen to reject
+        emit CitizenRejected(citizenId, block.timestamp);// emitting event
+    }
 
 
 
