@@ -94,6 +94,39 @@ contract CitizenRegistry is AccessControl{
         emit CitizenApproved(citizenId, block.timestamp);
         return citizenId;
     }
+    // We can create a function exlusively for admin to register a citizen without checking the ZK proof.
+    function registerCitizenByAdmin(
+        address citizenWallet,
+        bytes32 zkCommitment,
+        bytes32 mobileHash,
+        uint256 schemeId
+    ) external onlyRole(ADMIN_ROLE) returns (uint256) {
+        require(!commitmentUsed[zkCommitment], "Commitment already registered");
+        require(walletToCitizenId[citizenWallet] == 0 || 
+                _citizens[walletToCitizenId[citizenWallet]].walletAddress == address(0), 
+                "Wallet already registered");
+
+        uint256 citizenId = ++_citizenCounter;
+        _citizens[citizenId] = Citizen({
+            id: citizenId,
+            walletAddress: citizenWallet,
+            zkCommitment: zkCommitment,
+            status: CitizenStatus.Approved,
+            tokenBalance: 0,
+            registeredAt: block.timestamp,
+            approvedAt: block.timestamp,
+            mobileHash: mobileHash,
+            schemeId: schemeId
+        });
+
+        walletToCitizenId[citizenWallet] = citizenId;
+        commitmentUsed[zkCommitment] = true;
+        _allCitizenIds.push(citizenId);
+
+        emit CitizenRegistered(citizenId, citizenWallet, zkCommitment);
+        emit CitizenApproved(citizenId, block.timestamp);
+        return citizenId;
+    }
 
 
 
