@@ -173,9 +173,85 @@ async function initDatabase() {
     try { await db.exec('ALTER TABLE event_triggers ADD COLUMN retry_count INTEGER DEFAULT 0'); } catch(e) {}
     try { await db.exec('ALTER TABLE event_triggers ADD COLUMN error_message TEXT'); } catch(e) {}
     try { await db.exec('ALTER TABLE vendor_applications ADD COLUMN on_chain_vendor_id INTEGER'); } catch(e) {}
-    
 
+    //admin seedings - checking
+    const userCountRes = await db.query("SELECT COUNT(*) as count FROM users").get();
+    if (number(userCountRes.count) === 0) {
+        console.log("🌱 Seeding admin users...");
+        const adminHash = bcrypt.hashSync("admin123", 10);
+        const rbiAdminHash = bcrypt.hashSync("rbi123", 10);
+        await db.prepare('INSERT INTO users (phone, email, password_hash, name, role, phone_verified) VALUES (?, ?, ?, ?, ?, ?)')
+            .run("9000000001", "admin@bharatchain.gov.in", adminHash, "System Administrator", "admin", 1);
+        await db.prepare(`INSERT INTO users (phone, email, password_hash, name, role, phone_verified) VALUES (?, ?, ?, ?, ?, ?)`)
+            .run("9000000002", "admin@rbi.gov.in", rbiHash, "RBI Administrator", "rbi_admin", 1);
+        console.log("   ✅ Admin: phone 9000000001 / admin123");
+        console.log("   ✅ RBI:   phone 9000000002 / rbi123");
+    }
 
+    //seed citizens 
+    const citizenCountRes = await db.prepare("SELECT COUNT(*) as count FROM citizens_gov_db").get();
+    if (Number(citizenCountRes.count) === 0) {
+        console.log("🌱 Seeding 1050 citizens (this may take 1-2 minutes on first deploy)...");
+        await seedCitizens(db);
+    }
 
-
+    //seeding schemes
+    const schemeCountRes = await db.prepare("SELECT COUNT(*) as count FROM schemes").get();
+    if (Number(schemeCountRes.count) === 0) {
+        console.log("🌱 Seeding PM Kisan scheme...");
+        await db.prepare(`INSERT INTO schemes (name, description, total_fund, per_citizen_amount, instalment_count, instalment_amount, target_occupation) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+        .run("PM Kisan Agriculture Welfare Scheme", "Direct benefit transfer of ₹6,000 Digital Rupees to farmers for purchasing farming supplies and selling crops at fair prices through government-verified vendors. Only eligible for citizens with occupation: Farmer.", 10000000000, 6000, 1, 6000, "Farmer");
+        console.log("   ✅ PM Kisan scheme (₹1000 crores, lump-sum ₹6000)");
+    }
+    console.log("✅ Database ready.");
+    return db;
 }
+
+//creating dummy citizens
+async function seedCitizens(db) {
+
+    const firstNames = [
+        "Rajesh","Sunil","Mohan","Deepak","Anil","Ramesh","Suresh","Kamlesh","Dinesh","Mahesh",
+        "Vivek","Ajay","Pramod","Sanjay","Ravi","Ashok","Manoj","Bhagwan","Gopal","Shyam",
+        "Lakshmi","Sunita","Kamla","Savitri","Geeta","Rekha","Anita","Meena","Pushpa","Sita",
+        "Harish","Vijay","Santosh","Balram","Keshav","Tulsi","Janki","Hariom","Devendra","Narendra",
+        "Umesh","Pankaj","Alok","Brij","Chandra","Murli","Govind","Shiv","Ram","Jagdish",
+        "Priya","Neha","Pooja","Sneha","Ritu","Kavita","Nisha","Aarti","Swati","Manisha",
+        "Amit","Rohit","Vikas","Nitin","Sachin","Gaurav","Arun","Varun","Tarun","Karan"
+    ];
+    const lastNames = [
+        "Kumar","Patel","Sharma","Yadav","Verma","Gupta","Tiwari","Sahu","Rajput","Jain",
+        "Singh","Mishra","Kushwaha","Malviya","Chouhan","Thakur","Lodhi","Das","Ahirwar","Prajapati",
+        "Pandey","Dubey","Shukla","Tripathi","Dwivedi","Pal","Nigam","Prasad","Chauhan","Rao"
+    ];
+    const states = ["Madhya Pradesh","Uttar Pradesh","Rajasthan","Maharashtra","Bihar","Gujarat","Karnataka","Tamil Nadu","Punjab","Haryana","Chhattisgarh","Jharkhand","Odisha","Andhra Pradesh","Telangana"];
+    const districts = ["Bhopal","Indore","Lucknow","Jaipur","Patna","Ahmedabad","Pune","Nagpur","Jabalpur","Gwalior","Varanasi","Rewa","Satna","Vidisha","Ranchi","Raipur","Bhubaneswar","Hyderabad","Chennai","Bengaluru"];
+    const occupations = ["Farmer","Farmer","Farmer","Farmer","Shopkeeper","Teacher","Labourer","Driver","Tailor","Carpenter"];
+
+    // Insert 1050 citizens in a transaction
+    const tx = db.transaction(async (txDb) => {
+        for (let i = 0; i < 1050; i++) {
+        const firstName = firstNames[i % firstNames.length];
+        const lastName = lastNames[Math.floor(i / firstNames.length) % lastNames.length];
+        const suffix = Math.floor(i / (firstNames.length * lastNames.length));
+        const name = suffix > 0 ? `${firstName} ${lastName} ${suffix}` : `${firstName} ${lastName}`;
+        const pan = `${String.fromCharCode(65+(i%26))}${String.fromCharCode(65+((i+3)%26))}${String.fromCharCode(65+((i+7)%26))}${String.fromCharCode(65+((i+11)%26))}${String.fromCharCode(65+((i+15)%26))}${String(1000+i).padStart(4,"0")}${String.fromCharCode(65+(i%26))}`;
+        const occupation = occupations[i % occupations.length];
+        const isFarmer = occupation === "Farmer" ? 1 : 0;
+        const kisanCard = isFarmer ? `KCC${String(2024000 + i)}` : null;
+        const landAcres = isFarmer ? parseFloat((0.5 + Math.random() * 12).toFixed(2)) : 0;
+        const income = Math.floor(30000 + Math.random() * 250000);
+        const mobile = `${7 + (i % 3)}${String(100000000 + i).slice(0, 9)}`;
+        const email = i % 3 === 0 ? `${firstName.toLowerCase()}.${lastName.toLowerCase()}${i}@example.com` : null;
+        await txDb.prepare(`INSERT INTO citizens_gov_db (pan, kisan_card, name, is_farmer, occupation, land_acres, annual_income, mobile, email, district, state) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(pan, kisanCard, name, isFarmer, occupation, landAcres, income, mobile, email, districts[i%districts.length], states[i%states.length]);
+        }
+    });
+
+    await tx();
+    console.log("   ✅ 1050 citizens seeded into gov reference DB (700 farmers + 350 non-farmers)");
+    }
+
+
+
+    module.exports = { initDatabase, db };
+
