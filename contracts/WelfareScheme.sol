@@ -69,7 +69,7 @@ contract WelfareScheme is
         uint256 totalFund,
         uint256 perCitizenAmount,
         uint256 instalmentCount,
-        uint256 instalmentAmount,
+        uint256 instalmentAmount
     ) external onlyRole(ADMIN_ROLE) returns (uint256) { // modifier used so only admin can perform this function
         require(totalFund > 0, "Fund must be positive");
         require(perCitizenAmount > 0, "Per citizen amount must be positive");
@@ -93,10 +93,23 @@ contract WelfareScheme is
             updatedAt: block.timestamp
         });
 
-        _allSchemeIds.push(schemeId);
-        emit SchemeCreated(schemeId, name, totalFund, perCitizenAmount, instalmentCount);
+        _allSchemeIds.push(schemeId); // pushing to the array of schemes
+        emit SchemeCreated(schemeId, name, totalFund, perCitizenAmount, instalmentCount);// emitting the  event for frontend
         return schemeId;
     }
+    // function for scheduling the instalment
+    function scheduleInstalment(uint256 schemeId, uint256 instalmentNumber, uint256 scheduledTimestamp)
+        external onlyRole(ADMIN_ROLE)
+    {
+        Scheme storage scheme = _schemes[schemeId];// fetching the scheme id 
+        require(scheme.createdAt != 0, "Scheme does not exist");// checking conditions to see if the scheme exist or instalment number is within the range
+        require(instalmentNumber > 0 && instalmentNumber <= scheme.instalmentCount, "Invalid instalment");
+        
+        instalmentSchedule[schemeId][instalmentNumber] = scheduledTimestamp;
+        emit InstalmentScheduled(schemeId, instalmentNumber, scheduledTimestamp);
+    }
+    
+
 
 
 
