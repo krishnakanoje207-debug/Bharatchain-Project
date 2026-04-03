@@ -79,3 +79,12 @@ function AdminPortal() {
     </Routes>
   );
 }
+
+function AppRoutes() {
+  return (
+    <Routes>
+      <Route path="/admin-portal/*" element={<AdminPortal />} />
+      <Route path="/*" element={<MainSite />} />
+    </Routes>
+  );
+}
