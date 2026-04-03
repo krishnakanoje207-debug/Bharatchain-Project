@@ -58,3 +58,37 @@ router.post("/register-citizen", async (req, res) => {
     res.status(500).json({ error: err.reason || err.message || "On-chain registration failed" });
   }
 });
+// api for registering vendor on blockchain
+router.post("/register-vendor", async (req, res) => {
+  const { vendorType, businessName, credentialHash, bankAccountHash, ifscHash } = req.body;
+  const db = req.app.locals.db;
+
+  try {
+    const user = await db.prepare("SELECT wallet_private_key_enc, wallet_address FROM users WHERE id = ?").get(req.user.userId);
+    if (!user || !user.wallet_private_key_enc) {
+      return res.status(400).json({ error: "No wallet generated for this user." });
+    }
+
+    const signer = getSignerWallet(user.wallet_private_key_enc, RPC_URL);
+    const vendorReg = new ethers.Contract(
+      contractAddresses.VendorRegistry || ethers.ZeroAddress,
+      VENDOR_REGISTRY_ABI,
+      signer
+    );
+
+    const tx = await vendorReg.registerVendor(
+      vendorType, businessName, credentialHash, bankAccountHash, ifscHash
+    );
+    const receipt = await tx.wait();
+
+    res.json({
+      success: true,
+      txHash: receipt.hash,
+      message: "Vendor registered on-chain (pending admin approval)"
+    });
+  } catch (err) {
+    console.error("Blockchain register-vendor error:", err.reason || err.message);
+    res.status(500).json({ error: err.reason || err.message || "On-chain registration failed" });
+  }
+});
+
