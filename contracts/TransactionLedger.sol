@@ -35,7 +35,25 @@ contract TransactionLedger is AccessControl{
     );
     constructor(){
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        
-    }
 
+    }
+    // Function to Log Transaction
+    function logTransaction(
+        TxType txType,
+        address from,
+        address to,
+        uint256 amount,
+        string calldata description
+    ) external onlyRole(LOGGER_ROLE) returns (uint256) {
+        uint256 txId = _txCounter++;
+        
+        _transactions.push(TxRecord({// pushing a transaction record in the array
+            id: txId,
+            txType: txType,
+            from: from,
+            to: to,
+            amount: amount,
+            timestamp: block.timestamp,
+            description: description
+        }));
 }
