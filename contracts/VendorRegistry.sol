@@ -172,3 +172,58 @@ contract VendorRegistry is AccessControl {
     function updateTokenBalance(uint256 vendorId, uint256 amount) external onlyRole(ADMIN_ROLE) {
         _vendors[vendorId].tokenBalance += amount;
     }
+}
+// view functions
+function isVerifiedVendor(address wallet) external view returns (bool) {
+        uint256 vid = walletToVendorId[wallet];
+        return vid != 0 && _vendors[vid].status == VendorStatus.Approved;
+    }
+
+    function getVendor(uint256 vendorId) external view returns (Vendor memory) {
+        require(_vendors[vendorId].walletAddress != address(0), "Vendor does not exist");
+        return _vendors[vendorId];
+    }
+
+    function getVendorByWallet(address wallet) external view returns (Vendor memory) {
+        uint256 vid = walletToVendorId[wallet];
+        require(vid != 0, "No vendor for this wallet");
+        return _vendors[vid];
+    }
+
+    function isRBITransferConfirmed(uint256 vendorId) external view returns (bool) {
+        return _vendors[vendorId].rbiTransferConfirmed;
+    }
+
+    function getTotalVendors() external view returns (uint256) {
+        return _vendorCounter;
+    }
+
+    function getAllVendorIds() external view returns (uint256[] memory) {
+        return _allVendorIds;
+    }
+
+    function getVendorWallet(uint256 vendorId) external view returns (address) {
+        return _vendors[vendorId].walletAddress;
+    }
+
+    function getVendorsWithRBIConfirmation() external view returns (uint256[] memory) {
+        uint256 count = 0;
+        for (uint256 i = 0; i < _allVendorIds.length; i++) {
+            if (_vendors[_allVendorIds[i]].rbiTransferConfirmed) {
+                count++;
+            }
+        }
+
+        uint256[] memory confirmed = new uint256[](count);
+        uint256 idx = 0;
+        for (uint256 i = 0; i < _allVendorIds.length; i++) {
+            if (_vendors[_allVendorIds[i]].rbiTransferConfirmed) {
+                confirmed[idx++] = _allVendorIds[i];
+            }
+        }
+        return confirmed;
+    }
+
+
+
+
