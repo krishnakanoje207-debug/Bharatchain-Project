@@ -29,7 +29,18 @@ contract DigitalRupee is ERC20, ERC20Burnable, AccessControl {
         _mint(to, amount);
         emit TokensMinted(to, amount, block.timestamp);
     }
+    // only admin can brn tokens 
     function revokeTokens(address from, uint256 amount) external onlyRole(BURNER_ROLE) {
         _burn(from, amount);
         emit TokensRevoked(from, amount, block.timestamp);
     }
+    function burnFrom(address account, uint256 amount) public override {
+        if (hasRole(BURNER_ROLE, msg.sender)) {
+            _burn(account, amount);
+            emit TokensRevoked(account, amount, block.timestamp);
+        } else {
+            super.burnFrom(account, amount);
+        }
+    }
+
+
