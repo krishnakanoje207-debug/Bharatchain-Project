@@ -135,6 +135,14 @@ contract CitizenRegistry is AccessControl{
         citizen.status = CitizenStatus.Rejected;// if the above conditions are met then we change the status of citizen to reject
         emit CitizenRejected(citizenId, block.timestamp);// emitting event
     }
+    // A function to check if the citizen is funded or not and if funded, remove them from future Distribution
+        function markFunded(uint256 citizenId, uint256 amount) external onlyRole(DISTRIBUTOR_ROLE) {
+        Citizen storage citizen = _citizens[citizenId];
+        require(citizen.status == CitizenStatus.Approved, "Citizen not approved");// ckecking if the citizen is approved or not
+        citizen.status = CitizenStatus.Funded;
+        citizen.tokenBalance += amount;// updating balance of citizen
+        emit CitizenFunded(citizenId, amount, block.timestamp);// emitting event
+    }
 
 
 
