@@ -24,3 +24,37 @@ const CITIZEN_REGISTRY_ABI = [
 const VENDOR_REGISTRY_ABI = [
   "function registerVendor(uint8 vendorType, string businessName, bytes32 credentialHash, bytes32 bankAccountHash, bytes32 ifscHash) external returns (uint256)"
 ];
+// api for registering citizen on blockchain
+router.post("/register-citizen", async (req, res) => {
+  const { zkCommitment, mobileHash, schemeId, proof } = req.body;// acccessing data
+  const db = req.app.locals.db;
+
+  try {
+    const user = await db.prepare("SELECT wallet_private_key_enc, wallet_address FROM users WHERE id = ?").get(req.user.userId);// fetching wallet of user
+    if (!user || !user.wallet_private_key_enc) {
+      return res.status(400).json({ error: "No wallet generated for this user. Apply for a scheme first." });// if wallet isn't generated then return error
+    }
+    // creating a signer wallet using private key
+    const signer = getSignerWallet(user.wallet_private_key_enc, RPC_URL);
+    const citizenReg = new ethers.Contract(
+      contractAddresses.CitizenRegistry || ethers.ZeroAddress,
+      CITIZEN_REGISTRY_ABI,
+      signer
+    );
+    // calling register citizen
+    const tx = await citizenReg.registerCitizen(
+      zkCommitment, mobileHash, schemeId,
+      proof.a, proof.b, proof.c, proof.input
+    );
+    const receipt = await tx.wait();// waiting for transaction to be mined
+    //  when response == true
+    res.json({
+      success: true,
+      txHash: receipt.hash,
+      message: "Citizen registered on-chain (auto-approved)"
+    });
+  } catch (err) {
+    console.error("Blockchain register-citizen error:", err.reason || err.message);
+    res.status(500).json({ error: err.reason || err.message || "On-chain registration failed" });
+  }
+});
