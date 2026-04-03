@@ -56,4 +56,20 @@ contract TransactionLedger is AccessControl{
             timestamp: block.timestamp,
             description: description
         }));
+        // checking if the  transaction is public or private
+        if (txType == TxType.TokenMint || txType == TxType.TokenAllocation || txType == TxType.TokenRevocation) {
+            _publicTxIds.push(txId);// if any one is true it means it was a public transaction
+        } else {
+            _privateTxIds.push(txId);
+        }
+
+        emit TransactionLogged(txId, txType, from, to, amount, block.timestamp);
+        return txId;
+    }
+    // ********************************VIEW FUNCTIONS********************************
+    // 1. get a transaction by its ID
+    function getTransaction(uint256 txId) external view returns (TxRecord memory) {
+        require(txId < _transactions.length, "Transaction does not exist");
+        return _transactions[txId];
+    }
 }
