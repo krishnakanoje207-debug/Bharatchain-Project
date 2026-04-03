@@ -154,3 +154,32 @@ contract TokenDistributor is AccessControl {
             }
         }
     }
+    //************view functions *//
+            
+    
+
+    // ==================== VIEW FUNCTIONS ====================
+
+    function getDistributionStatus()
+        external
+        view
+        returns (
+            uint256 schemeId,
+            uint256 amount,
+            bool completed,
+            uint256 currentInterval,
+            uint256 lastTimestamp,
+            uint256 nextEligible
+        )
+    {
+        return (
+            activeSchemeId,
+            perCitizenAmount,
+            distributionCompleted,
+            interval,
+            lastTimeStamp,
+            lastTimeStamp + interval
+        );
+    }
+}
+
