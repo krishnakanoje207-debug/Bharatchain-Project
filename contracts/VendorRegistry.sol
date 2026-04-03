@@ -85,3 +85,90 @@ contract VendorRegistry is AccessControl {
         vendor.approvedAt =block.timestamp;
         emit VendorApproved(vendorId,block.timestamp);
     }
+     function rejectVendor(uint256 vendorId) external onlyRole(ADMIN_ROLE) {
+        Vendor storage vendor = _vendors[vendorId];
+        require(vendor.walletAddress != address(0), "Vendor does not exist");
+        require(vendor.status == VendorStatus.Pending, "Vendor not pending");
+
+        vendor.status = VendorStatus.Rejected;
+        emit VendorRejected(vendorId, block.timestamp);
+    }
+
+    /**
+     * @dev Suspend an approved vendor. Admin only.
+     */
+    function suspendVendor(uint256 vendorId) external onlyRole(ADMIN_ROLE) {
+        Vendor storage vendor = _vendors[vendorId];
+        require(vendor.status == VendorStatus.Approved, "Vendor not approved");
+
+        vendor.status = VendorStatus.Suspended;
+        emit VendorSuspended(vendorId, block.timestamp);
+    }
+
+    /**
+     * @dev Vendor requests INR exchange for accumulated tokens.
+     */
+    function requestExchange(uint256 amount) external {
+        uint256 vendorId = walletToVendorId[msg.sender];
+        require(vendorId != 0, "Not a registered vendor");
+        Vendor storage vendor = _vendors[vendorId];
+        require(vendor.status == VendorStatus.Approved, "Vendor not approved");
+        require(vendor.exchangeStatus == ExchangeStatus.None || 
+                vendor.exchangeStatus == ExchangeStatus.TokensRevoked, 
+                "Exchange already in progress");
+        require(amount > 0, "Amount must be positive");
+
+        vendor.exchangeStatus = ExchangeStatus.Requested;
+        vendor.exchangeRequestAmount = amount;
+
+        emit ExchangeRequested(vendorId, amount, block.timestamp);
+    }
+
+    /**
+     * @dev Admin confirms ITR verification passed for vendor.
+     */
+    function verifyITR(uint256 vendorId) external onlyRole(ADMIN_ROLE) {
+        Vendor storage vendor = _vendors[vendorId];
+        require(vendor.exchangeStatus == ExchangeStatus.Requested, "No exchange request");
+
+        vendor.exchangeStatus = ExchangeStatus.ITRVerified;
+        emit ITRVerified(vendorId, block.timestamp);
+    }
+
+    /**
+     * @dev RBI admin confirms real INR has been transferred to vendor's bank account.
+     * This triggers the token revocation flow via Chainlink Keeper.
+     */
+    function confirmRBITransfer(uint256 vendorId) external onlyRole(RBI_ROLE) {
+        Vendor storage vendor = _vendors[vendorId];
+        require(vendor.walletAddress != address(0), "Vendor does not exist");
+        require(vendor.exchangeStatus == ExchangeStatus.ITRVerified, "ITR not verified");
+
+        vendor.rbiTransferConfirmed = true;
+        vendor.exchangeStatus = ExchangeStatus.RBITransferred;
+
+        emit RBITransferConfirmed(vendorId, vendor.exchangeRequestAmount, block.timestamp);
+    }
+
+    /**
+     * @dev Mark vendor tokens as revoked. Called by TokenDistributor after burning.
+     */
+    function markTokensRevoked(uint256 vendorId, uint256 amount) external onlyRole(ADMIN_ROLE) {
+        Vendor storage vendor = _vendors[vendorId];
+        require(vendor.rbiTransferConfirmed, "RBI transfer not confirmed");
+
+        vendor.exchangeStatus = ExchangeStatus.TokensRevoked;
+        vendor.exchangedAmount += amount;
+        vendor.tokenBalance = 0;
+        vendor.rbiTransferConfirmed = false;
+        vendor.exchangeRequestAmount = 0;
+
+        emit TokensRevokedFromVendor(vendorId, amount, block.timestamp);
+    }
+
+    /**
+     * @dev Update vendor token balance. Called when citizens transfer tokens.
+     */
+    function updateTokenBalance(uint256 vendorId, uint256 amount) external onlyRole(ADMIN_ROLE) {
+        _vendors[vendorId].tokenBalance += amount;
+    }
