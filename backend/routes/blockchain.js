@@ -91,4 +91,55 @@ router.post("/register-vendor", async (req, res) => {
     res.status(500).json({ error: err.reason || err.message || "On-chain registration failed" });
   }
 });
+// for loading contract addresses freshly to handle redeployments without server restart
+router.get("/wallet-info", async (req, res) => {
+  const db = req.app.locals.db;
+  const user = await db.prepare("SELECT wallet_address, wallet_private_key_enc FROM users WHERE id = ?").get(req.user.userId);
+
+  if (!user || !user.wallet_address) {
+    return res.json({ wallet: null, balance: "0", message: "No wallet yet. Apply for a scheme to get one." });
+  }
+
+  try {
+    const provider = new ethers.JsonRpcProvider(RPC_URL);
+    const balance = await provider.getBalance(user.wallet_address);
+    
+    // Load FRESH contract addresses (not cached) to handle redeployments
+    let freshAddresses = {};
+    try {
+      delete require.cache[require.resolve("../../frontend/src/config/deployed-addresses.json")];
+      freshAddresses = require("../../frontend/src/config/deployed-addresses.json");
+    } catch {
+      try {
+        delete require.cache[require.resolve("../../deployed-addresses.json")];
+        freshAddresses = require("../../deployed-addresses.json");
+      } catch { /* no addresses available */ }
+    }
+
+    // Check Digital Rupee token balance
+    let tokenBalance = "0";
+    if (freshAddresses.DigitalRupee) {
+      const dr = new ethers.Contract(
+        freshAddresses.DigitalRupee,
+        ["function balanceOf(address) view returns (uint256)"],
+        provider
+      );
+      try {
+        const bal = await dr.balanceOf(user.wallet_address);
+        tokenBalance = ethers.formatEther(bal);
+      } catch { /* contract may not be deployed */ }
+    }
+
+    res.json({
+      wallet: user.wallet_address,
+      ethBalance: ethers.formatEther(balance),
+      tokenBalance,
+      message: "Wallet auto-generated from your identity"
+    });
+  } catch (err) {
+    res.json({ wallet: user.wallet_address, ethBalance: "0", tokenBalance: "0" });
+  }
+});
+
+
 
