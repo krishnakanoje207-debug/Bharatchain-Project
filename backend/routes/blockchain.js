@@ -291,4 +291,57 @@ router.post("/pay-vendor", async (req, res) => {
     res.status(500).json({ error: err.reason || err.message || "Transfer failed" });
   }
 });
+// API for vendor requesting INR Exchange
+router.post("/request-exchange", async (req, res) => {
+  const { amount } = req.body;
+  const db = req.app.locals.db;
+
+  if (!amount || parseFloat(amount) <= 0) return res.status(400).json({ error: "Valid amount required" });
+
+  // Get vendor's wallet
+  const user = await db.prepare("SELECT wallet_address, wallet_private_key_enc FROM users WHERE id = ?").get(req.user.userId);
+  if (!user || !user.wallet_private_key_enc) {
+    return res.status(400).json({ error: "No wallet found." });
+  }
+
+  // Check vendor is approved
+  const vendor = await db.prepare("SELECT status FROM vendor_applications WHERE user_id = ?").get(req.user.userId);
+  if (!vendor || vendor.status !== "Approved") {
+    return res.status(403).json({ error: "Only approved vendors can request exchange." });
+  }
+
+  try {
+    let freshAddresses = {};
+    try {
+      delete require.cache[require.resolve("../../frontend/src/config/deployed-addresses.json")];
+      freshAddresses = require("../../frontend/src/config/deployed-addresses.json");
+    } catch {
+      delete require.cache[require.resolve("../../deployed-addresses.json")];
+      freshAddresses = require("../../deployed-addresses.json");
+    }
+
+    const { decryptPrivateKey } = require("../utils/walletGenerator");
+    const vendorPrivKey = decryptPrivateKey(user.wallet_private_key_enc);
+    const provider = new ethers.JsonRpcProvider(RPC_URL);
+    const vendorSigner = new ethers.Wallet(vendorPrivKey, provider);
+
+    const vendorReg = new ethers.Contract(
+      freshAddresses.VendorRegistry,
+      ["function requestExchange(uint256 amount) external"],
+      vendorSigner
+    );
+
+    const amountWei = ethers.parseEther(String(amount));
+    const tx = await vendorReg.requestExchange(amountWei);
+    await tx.wait();
+
+    res.json({ success: true, message: `Exchange request for ₹${amount} submitted on-chain.`, txHash: tx.hash });
+  } catch (err) {
+    console.error("Request-exchange error:", err.reason || err.message);
+    res.status(500).json({ error: err.reason || err.message || "Exchange request failed" });
+  }
+});
+
+module.exports = router;
+
 
