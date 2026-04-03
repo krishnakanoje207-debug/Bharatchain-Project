@@ -292,3 +292,55 @@ router.post("/vendors/:id/reject", requireRole("admin"), async (req, res) => {
     });
 });
 
+router.get("/citizens", requireRole("admin", "rbi_admin"), async (req, res) => {
+    const db = req.app.locals.db;
+    const applications = await db.prepare(`
+        SELECT ca.*, u.name as user_name, u.phone as user_phone, s.name as scheme_name
+        FROM citizen_applications ca
+        LEFT JOIN users u ON ca.user_id = u.id
+        LEFT JOIN schemes s ON ca.scheme_id = s.id
+        ORDER BY ca.applied_at DESC
+    `).all();
+    res.json({ applications, total: applications.length });
+});
+
+router.post("/citizens/:id/approve", requireRole("admin"), async (req, res) => {
+    const db = req.app.locals.db;
+    const app = await db.prepare("SELECT * FROM citizen_applications WHERE id = ?").get(req.params.id);
+    if (!app) return res.status(404).json({ error: "Application not found" });
+    if (app.status !== "Pending") return res.status(400).json({ error: `Cannot approve — status is ${app.status}` });
+
+    await db.prepare("UPDATE citizen_applications SET status = 'Approved', reviewed_at = NOW() WHERE id = ?").run(req.params.id);
+
+    // Send approval notification
+    const user = await db.prepare("SELECT phone, name FROM users WHERE id = ?").get(app.user_id);
+    if (user) {
+        await db.prepare("INSERT INTO notifications (user_id, type, recipient, message) VALUES (?, ?, ?, ?)")
+        .run(app.user_id, "sms", user.phone, `Dear ${user.name}, your welfare application has been APPROVED! You will receive tokens soon.`);
+        console.log(`✅ [APPROVED] Citizen ${user.name} (${user.phone}) — Application #${req.params.id}`);
+    }
+
+    res.json({ success: true, message: "Application approved" });
+});
+
+router.post("/citizens/:id/reject", requireRole("admin"), async (req, res) => {
+    const db = req.app.locals.db;
+    const { reason } = req.body;
+    const app = await db.prepare("SELECT * FROM citizen_applications WHERE id = ?").get(req.params.id);
+    if (!app) return res.status(404).json({ error: "Application not found" });
+    if (app.status !== "Pending") return res.status(400).json({ error: `Cannot reject — status is ${app.status}` });
+
+    const rejectionReason = reason || "Application did not meet eligibility criteria";
+    await db.prepare("UPDATE citizen_applications SET status = 'Rejected', rejection_reason = ?, reviewed_at = NOW() WHERE id = ?")
+        .run(rejectionReason, req.params.id);
+
+    // Send rejection notification
+    const user = await db.prepare("SELECT phone, name FROM users WHERE id = ?").get(app.user_id);
+    if (user) {
+        await db.prepare("INSERT INTO notifications (user_id, type, recipient, message) VALUES (?, ?, ?, ?)")
+        .run(app.user_id, "sms", user.phone, `Dear ${user.name}, your welfare application has been REJECTED. Reason: ${rejectionReason}`);
+        console.log(`❌ [REJECTED] Citizen ${user.name} (${user.phone}) — Reason: ${rejectionReason}`);
+    }
+
+    res.json({ success: true, message: "Application rejected", reason: rejectionReason });
+});
