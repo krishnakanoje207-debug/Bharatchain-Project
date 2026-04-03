@@ -30,12 +30,14 @@ function ProtectedRoute({ children, allowedRoles }) {
   if (allowedRoles && !allowedRoles.includes(user.role)) return <Navigate to="/" />;
   return children;
 }
+
 function AdminProtected({ children }) {
   const { user, loading, isAnyAdmin } = useAuth();
   if (loading) return <div className="loading-overlay"><div className="spinner" /><p>Loading admin panel...</p></div>;
   if (!user || !isAnyAdmin) return <Navigate to="/admin-portal/login" />;
   return children;
 }
+
 function MainSite() {
   return (
     <>
@@ -58,5 +60,22 @@ function MainSite() {
         <Route path="/vendor/exchange" element={<ProtectedRoute allowedRoles={['vendor']}><VendorExchange /></ProtectedRoute>} />
       </Routes>
     </>
+  );
+}
+
+
+
+function AdminPortal() {
+  return (
+    <Routes>
+      <Route path="/login" element={<AdminLogin />} />
+      <Route path="/" element={<AdminProtected><AdminLayout><AdminDashboard /></AdminLayout></AdminProtected>} />
+      <Route path="/citizens" element={<AdminProtected><AdminLayout><CitizenManagement /></AdminLayout></AdminProtected>} />
+      <Route path="/vendors" element={<AdminProtected><AdminLayout><VendorManagement /></AdminLayout></AdminProtected>} />
+      <Route path="/schemes" element={<AdminProtected><AdminLayout><AdminSchemes /></AdminLayout></AdminProtected>} />
+      <Route path="/event-triggers" element={<AdminProtected><AdminLayout><EventTriggers /></AdminLayout></AdminProtected>} />
+      <Route path="/ledger" element={<AdminProtected><AdminLayout><PublicLedger /></AdminLayout></AdminProtected>} />
+      <Route path="/settlements" element={<AdminProtected><AdminLayout><VendorManagement /></AdminLayout></AdminProtected>} />
+    </Routes>
   );
 }
