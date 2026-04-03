@@ -48,7 +48,56 @@ contract WelfareScheme is
     event SchemeStatusUpdated(uint256 indexed schemeId, SchemeStatus newStatus, uint256 timestamp);
     event FundsDistributed(uint256 indexed schemeId, uint256 amount, uint256 beneficiaries);
     event InstalmentScheduled(uint256 indexed schemeId, uint256 instalmentNumber, uint256 scheduledTimestamp); 
-      
+
+    constructor(
+        address _digitalRupee, // taking input of the addresses of contracts
+        address _citizenRegistry,
+        address _vendorRegistry,
+        address _transactionLedger
+    ) {
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);//constructor function grants role to deployer 
+        _grantRole(ADMIN_ROLE, msg.sender);
+        digitalRupeeAddress = _digitalRupee;
+        citizenRegistryAddress = _citizenRegistry;
+        vendorRegistryAddress = _vendorRegistry;
+        transactionLedgerAddress = _transactionLedger;
+    }// storing the given addresses in the variable we made for it above 
+    // creating the function for making a scheme 
+    function createScheme(
+        string calldata name,
+        string calldata description,
+        uint256 totalFund,
+        uint256 perCitizenAmount,
+        uint256 instalmentCount,
+        uint256 instalmentAmount,
+    ) external onlyRole(ADMIN_ROLE) returns (uint256) { // modifier used so only admin can perform this function
+        require(totalFund > 0, "Fund must be positive");
+        require(perCitizenAmount > 0, "Per citizen amount must be positive");
+        require(perCitizenAmount <= totalFund, "Per citizen exceeds total fund");
+        require(instalmentCount > 0, "At least 1 instalment");
+
+        uint256 schemeId = ++_schemeCounter;
+        _schemes[schemeId] = Scheme({
+            id: schemeId,
+            name: name,
+            description: description,
+            totalFund: totalFund,
+            distributedFund: 0,
+            perCitizenAmount: perCitizenAmount,
+            instalmentCount: instalmentCount,
+            instalmentAmount: instalmentAmount > 0 ? instalmentAmount : perCitizenAmount / instalmentCount,
+            currentInstalment: 0,
+            status: SchemeStatus.Active,
+            beneficiaryCount: 0,
+            createdAt: block.timestamp,
+            updatedAt: block.timestamp
+        });
+
+        _allSchemeIds.push(schemeId);
+        emit SchemeCreated(schemeId, name, totalFund, perCitizenAmount, instalmentCount);
+        return schemeId;
+    }
+
 
 
 }
