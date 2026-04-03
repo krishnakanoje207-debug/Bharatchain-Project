@@ -176,3 +176,119 @@ router.post("/vendors/:id/reject", requireRole("admin"), async (req, res) => {
     router.post("/confirm-transfer/:vendorId", requireRole("rbi_admin"), async (req, res) => {
     const db = req.app.locals.db;
     const { amount, transactionRef } = req.body;
+
+    // Look up vendor APPLICATION (not gov DB) — the frontend sends vendor_applications.id
+    const app = await db.prepare(`
+        SELECT va.*, u.wallet_address, u.wallet_private_key_enc, u.name as user_name, u.phone as user_phone
+        FROM vendor_applications va
+        JOIN users u ON va.user_id = u.id
+        WHERE va.id = ?
+    `).get(req.params.vendorId);
+
+    if (!app) return res.status(404).json({ error: "Vendor application not found" });
+    if (app.status !== "Approved") return res.status(400).json({ error: `Vendor status is "${app.status}", not Approved` });
+    if (!app.wallet_address) return res.status(400).json({ error: "Vendor has no wallet address" });
+
+    const transferAmount = parseFloat(amount) || 0;
+    if (transferAmount <= 0) return res.status(400).json({ error: "Transfer amount must be positive" });
+
+    console.log(`\n🏦 [RBI TRANSFER] ${app.business_name} — ₹${transferAmount} — Ref: ${transactionRef || "N/A"}`);
+    let tokensBurned = false;
+    let burnTxHash = null;
+    try {
+        const { ethers } = require("ethers");
+        const { getDigitalRupee, getVendorRegistry, getTransactionLedger, withTxLock } = require("../utils/contractSigner");
+
+        await withTxLock(async () => {
+        const amountWei = ethers.parseEther(String(transferAmount));
+
+        // Step 1: Check vendor's token balance
+        const { contract: dr1 } = getDigitalRupee(true);
+        const vendorBalance = await dr1.balanceOf(app.wallet_address);
+        const burnAmount = vendorBalance < amountWei ? vendorBalance : amountWei;
+
+        if (burnAmount > 0n) {
+            // Step 2: Burn (revoke) tokens from vendor's wallet
+            const { contract: dr2 } = getDigitalRupee(true);
+            const burnTx = await dr2.revokeTokens(app.wallet_address, burnAmount);
+            const burnReceipt = await burnTx.wait();
+            burnTxHash = burnReceipt.hash;
+            console.log(`   🔥 Burned ₹${ethers.formatEther(burnAmount)} tokens from ${app.wallet_address.slice(0,10)}...`);
+
+            // Step 3: Mark tokens revoked on VendorRegistry (if vendor is on-chain)
+            try {
+            const { contract: vendorReg } = getVendorRegistry();
+            const vendorData = await vendorReg.getVendorByWallet(app.wallet_address);
+            const onChainVendorId = Number(vendorData.id);
+            const exchangeStatus = Number(vendorData.exchangeStatus);
+
+            if (exchangeStatus === 0 || exchangeStatus === 4) {
+                console.log(`   ℹ️ VendorRegistry exchangeStatus=${exchangeStatus} (None/Revoked) — ERC-20 burn completed, skipping VendorRegistry state update`);
+            } else if (exchangeStatus === 1) {
+                const { contract: vr1 } = getVendorRegistry();
+                await (await vr1.verifyITR(onChainVendorId)).wait();
+                const { contract: vr2 } = getVendorRegistry();
+                await (await vr2.confirmRBITransfer(onChainVendorId)).wait();
+                const { contract: vr3 } = getVendorRegistry();
+                await (await vr3.markTokensRevoked(onChainVendorId, burnAmount)).wait();
+                console.log(`   ✅ VendorRegistry updated — tokens revoked for vendor #${onChainVendorId}`);
+            } else if (exchangeStatus === 2) {
+                const { contract: vr2 } = getVendorRegistry();
+                await (await vr2.confirmRBITransfer(onChainVendorId)).wait();
+                const { contract: vr3 } = getVendorRegistry();
+                await (await vr3.markTokensRevoked(onChainVendorId, burnAmount)).wait();
+                console.log(`   ✅ VendorRegistry updated — tokens revoked for vendor #${onChainVendorId}`);
+            } else if (exchangeStatus === 3) {
+                const { contract: vr3 } = getVendorRegistry();
+                await (await vr3.markTokensRevoked(onChainVendorId, burnAmount)).wait();
+                console.log(`   ✅ VendorRegistry updated — tokens revoked for vendor #${onChainVendorId}`);
+            }
+            } catch (vrErr) {
+            console.warn(`   ⚠️ VendorRegistry update skipped: ${vrErr.reason || vrErr.message}`);
+            }
+
+            // Step 4: Log to on-chain TransactionLedger
+            try {
+            const { contract: ledger } = getTransactionLedger();
+            await (await ledger.logTransaction(
+                4, // TokenRevocation
+                app.wallet_address,
+                "0x0000000000000000000000000000000000000000",
+                burnAmount,
+                `RBI transfer confirmed — ₹${transferAmount} revoked from "${app.business_name}"`
+            )).wait();
+            console.log(`   📒 Logged revocation to TransactionLedger`);
+            } catch (logErr) {
+            console.warn(`   ⚠️ TransactionLedger log skipped: ${logErr.reason || logErr.message}`);
+            }
+
+            tokensBurned = true;
+        } else {
+            console.log(`   ℹ️ Vendor has 0 token balance — no tokens to burn`);
+        }
+        });
+    } catch (chainErr) {
+        console.warn(`   ⚠️ On-chain token revocation error: ${chainErr.reason || chainErr.shortMessage || chainErr.message}`);
+    }
+
+    // Log to DB transaction_log
+    await db.prepare("INSERT INTO transaction_log (tx_type, from_address, to_address, amount, description, tx_hash) VALUES (?, ?, ?, ?, ?, ?)")
+        .run("TokenRevocation", app.wallet_address, "0x0000000000000000000000000000000000000000", transferAmount,
+        `RBI transfer ₹${transferAmount} to "${app.business_name}" — Ref: ${transactionRef || "N/A"}. Tokens ${tokensBurned ? "revoked" : "not revoked"}.`,
+        burnTxHash || null);
+
+    // Log notification
+    await db.prepare("INSERT INTO notifications (user_id, type, recipient, message) VALUES (?, ?, ?, ?)")
+        .run(app.user_id, "system", app.user_phone,
+        `RBI transferred ₹${transferAmount} to your bank account for "${app.business_name}". ${tokensBurned ? 'Tokens revoked.' : ''} Ref: ${transactionRef || 'N/A'}`);
+
+    console.log(`   ✅ [RBI TRANSFER COMPLETE] ${app.business_name} — ₹${transferAmount} — Tokens ${tokensBurned ? 'REVOKED' : 'not revoked (0 balance or chain error)'}\n`);
+
+    res.json({
+        confirmed: true,
+        tokensBurned,
+        vendor: { id: app.id, businessName: app.business_name },
+        message: `Transfer confirmed for "${app.business_name}". ${tokensBurned ? 'Tokens revoked on-chain.' : 'No tokens to revoke.'}`
+    });
+});
+
