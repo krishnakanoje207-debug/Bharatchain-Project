@@ -88,3 +88,14 @@ function AppRoutes() {
     </Routes>
   );
 }
+
+export default function App() {
+  return (
+    <LanguageProvider>
+      <AuthProvider>
+        <AppRoutes />
+      </AuthProvider>
+    </LanguageProvider>
+  );
+}
+
