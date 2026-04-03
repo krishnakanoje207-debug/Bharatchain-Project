@@ -91,3 +91,60 @@ export default function AdminDashboard() {
           </div>
         )}
 
+         {/* Tab Switcher */}
+        <div className="flex gap-1 mt-3" style={{ marginBottom: '1rem' }}>
+          <button onClick={() => setTab('schemes')} className={`btn btn-sm ${tab === 'schemes' ? 'btn-primary' : 'btn-secondary'}`}>{t('admin.activeSchemes')}</button>
+          <button onClick={() => setTab('activities')} className={`btn btn-sm ${tab === 'activities' ? 'btn-primary' : 'btn-secondary'}`}>{t('admin.recentActivities')}</button>
+        </div>
+
+        {/* Active Schemes Tab */}
+        {tab === 'schemes' && stats?.schemes?.length > 0 && (
+          <div className="card" style={{ borderLeft: '4px solid var(--saffron)' }}>
+            <h3 style={{ marginBottom: '1rem' }}>{t('admin.activeSchemes')}</h3>
+            {stats.schemes.map(s => (
+              <div key={s.id} style={{ padding: '0.75rem 0', borderBottom: '1px solid var(--border)' }}>
+                <div className="flex-between" style={{ flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <div>
+                    <span className={`badge ${s.status === 'Active' ? 'badge-success' : s.status === 'Upcoming' ? 'badge-info' : 'badge-warning'}`} style={{ marginRight: '0.5rem' }}>{s.status}</span>
+                    <strong>{s.name}</strong>
+                  </div>
+                  <span className="badge badge-info">{s.beneficiary_count || 0} {t('admin.beneficiaries')}</span>
+                </div>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '0.25rem' }}>
+                  {t('common.fund')}: ₹{(s.total_fund/10000000).toLocaleString()} Cr | {t('schemes.perCitizen')}: ₹{s.per_citizen_amount?.toLocaleString()} | {t('schemes.instalments')}: {s.instalment_count} × ₹{s.instalment_amount?.toLocaleString()} | {t('common.target')}: {s.target_occupation}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Recent Activities Tab */}
+        {tab === 'activities' && (
+          <div className="card" style={{ borderLeft: '4px solid var(--info)' }}>
+            <h3 style={{ marginBottom: '1rem' }}>{t('admin.recentActivities')}</h3>
+            {activities.length === 0 ? (
+              <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>No recent activities yet</p>
+            ) : (
+              activities.map((a, i) => (
+                <div key={i} style={{ padding: '0.6rem 0', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <span style={{ fontSize: '1.2rem' }}>{ACTIVITY_ICONS[a.type] || '📋'}</span>
+                    <div>
+                      <div style={{ fontSize: '0.85rem', fontWeight: 500 }}>{a.title || a.type}</div>
+                      {a.amount > 0 && <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>₹{parseFloat(a.amount).toLocaleString()}</span>}
+                    </div>
+                  </div>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                    {new Date(a.created_at).toLocaleString()}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
