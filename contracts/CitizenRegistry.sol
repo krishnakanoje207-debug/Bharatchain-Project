@@ -54,7 +54,46 @@ contract CitizenRegistry is AccessControl{
         _grantRole(ADMIN_ROLE, msg.sender);
         zkVerifier = IZKVerifier(_zkVerifier);// assigning the address to an instance 
     }
+    // creating the  main function of registering citizen
+    function registerCitizen(
+        bytes32 zkCommitment,
+        bytes32 mobileHash,
+        uint256 schemeId,
+        uint256[2] calldata a,
+        uint256[2][2] calldata b,
+        uint256[2] calldata c,
+        uint256[1] calldata input
+    ) external returns (uint256) {
+        require(!commitmentUsed[zkCommitment], "Commitment already registered");// checking if the zk is used previously or not
+        require(walletToCitizenId[msg.sender] == 0 || 
+                _citizens[walletToCitizenId[msg.sender]].walletAddress == address(0), 
+                "Wallet already registered");// checking  if the wallet is used previously or not
 
+        require(input[0] == uint256(zkCommitment), "Input mismatch with commitment");// is zk the same as the input provided
+        bool proofValid = zkVerifier.verifyProof(a, b, c, input);// checking if citizen is verified or not by calling verifyProof Function
+        require(proofValid, "Invalid ZK proof");
+
+        uint256 citizenId = ++_citizenCounter;// citizen data 
+        _citizens[citizenId] = Citizen({
+            id: citizenId,
+            walletAddress: msg.sender,
+            zkCommitment: zkCommitment,
+            status: CitizenStatus.Approved,
+            tokenBalance: 0,
+            registeredAt: block.timestamp,
+            approvedAt: block.timestamp,
+            mobileHash: mobileHash,
+            schemeId: schemeId
+        });
+
+        walletToCitizenId[msg.sender] = citizenId;// storing wallet
+        commitmentUsed[zkCommitment] = true;// to avoid reuse of ZKproofs
+        _allCitizenIds.push(citizenId);//pushing to the citizen array
+        // emitting  the events
+        emit CitizenRegistered(citizenId, msg.sender, zkCommitment);
+        emit CitizenApproved(citizenId, block.timestamp);
+        return citizenId;
+    }
 
 
 
