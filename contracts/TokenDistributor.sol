@@ -106,3 +106,51 @@ contract TokenDistributor is AccessControl {
         interval = _interval;
         emit IntervalUpdated(_interval);
     }
+    // ==================== CHAINLINK KEEPER: VENDOR REVOCATION ====================
+     function checkVendorRevocation(
+        bytes calldata
+    ) external view returns (bool upkeepNeeded, bytes memory performData) {
+        uint256[] memory confirmedVendorIds = vendorRegistry
+            .getVendorsWithRBIConfirmation();
+        upkeepNeeded = confirmedVendorIds.length > 0;
+        performData = abi.encode(confirmedVendorIds);
+    }
+
+    function performVendorRevocation(bytes calldata performData) external {
+        uint256[] memory vendorIds = abi.decode(performData, (uint256[]));
+        _revokeVendorTokens(vendorIds);
+    }
+
+    function manualRevoke() external onlyRole(ADMIN_ROLE) {
+        uint256[] memory confirmedIds = vendorRegistry
+            .getVendorsWithRBIConfirmation();
+        require(
+            confirmedIds.length > 0,
+            "No vendors with confirmed RBI transfers"
+        );
+        _revokeVendorTokens(confirmedIds);
+    }
+
+    function _revokeVendorTokens(uint256[] memory vendorIds) internal {
+        for (uint256 i = 0; i < vendorIds.length; i++) {
+            address vendorWallet = vendorRegistry.getVendorWallet(vendorIds[i]);
+            uint256 vendorBalance = digitalRupee.balanceOf(vendorWallet);
+            if (vendorBalance > 0) {
+                digitalRupee.revokeTokens(vendorWallet, vendorBalance);
+                vendorRegistry.markTokensRevoked(vendorIds[i], vendorBalance);
+                transactionLedger.logTransaction(
+                    4,
+                    vendorWallet,
+                    address(0),
+                    vendorBalance,
+                    "Token revocation after RBI INR transfer"
+                );
+                emit VendorTokensRevoked(
+                    vendorIds[i],
+                    vendorWallet,
+                    vendorBalance,
+                    block.timestamp
+                );
+            }
+        }
+    }
