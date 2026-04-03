@@ -143,8 +143,43 @@ contract CitizenRegistry is AccessControl{
         citizen.tokenBalance += amount;// updating balance of citizen
         emit CitizenFunded(citizenId, amount, block.timestamp);// emitting event
     }
-
-
+    //******************View Functions for the contract***************** */
+    // 1. for citizen details
+    function getCitizen(uint256 citizenId) external view returns (Citizen memory) {
+        require(_citizens[citizenId].walletAddress != address(0), "Citizen does not exist");
+        return _citizens[citizenId];
+    }
+    //  2.to return citizen by wallet address
+    function getCitizenByWallet(address wallet) external view returns (Citizen memory) {
+        uint256 cid = walletToCitizenId[wallet];
+        require(cid != 0, "No citizen for this wallet");
+        return _citizens[cid];
+    }
+    //3. status of citizen
+    function getCitizenStatus(uint256 citizenId) external view returns (CitizenStatus) {
+        return _citizens[citizenId].status;
+    }
+    // 4. Citizen count
+    function getTotalCitizens() external view returns (uint256) { return _citizenCounter; }
+    // 5. to return approved citizen but not funded and exluding Funded citizens for distribution
+    function getApprovedCitizenIds() external view returns (uint256[] memory) {
+        uint256 count = 0;
+        for (uint256 i = 0; i < _allCitizenIds.length; i++) {
+            if (_citizens[_allCitizenIds[i]].status == CitizenStatus.Approved) count++;
+        }
+        uint256[] memory approved = new uint256[](count);// storing approved citizens in new array
+        uint256 idx = 0;
+        for (uint256 i = 0; i < _allCitizenIds.length; i++) {
+            if (_citizens[_allCitizenIds[i]].status == CitizenStatus.Approved) approved[idx++] = _allCitizenIds[i];
+        }
+        return approved;
+    }
+    // 6. to get citizen ids
+    function getAllCitizenIds() external view returns (uint256[] memory) { return _allCitizenIds; }
+    // 7. to get a wallet address
+    function getCitizenWallet(uint256 citizenId) external view returns (address) {
+        return _citizens[citizenId].walletAddress;
+    }
 
 }
 
