@@ -36,3 +36,27 @@ function AdminProtected({ children }) {
   if (!user || !isAnyAdmin) return <Navigate to="/admin-portal/login" />;
   return children;
 }
+function MainSite() {
+  return (
+    <>
+      <Navbar />
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<SignUp />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/schemes" element={<Schemes />} />
+        <Route path="/ledger" element={<PublicLedger />} />
+
+        <Route path="/citizen" element={<ProtectedRoute allowedRoles={['citizen']}><CitizenDashboard /></ProtectedRoute>} />
+        <Route path="/citizen/apply" element={<ProtectedRoute allowedRoles={['citizen']}><Apply /></ProtectedRoute>} />
+        <Route path="/citizen/wallet" element={<ProtectedRoute allowedRoles={['citizen']}><Wallet /></ProtectedRoute>} />
+        <Route path="/citizen/send" element={<ProtectedRoute allowedRoles={['citizen']}><SendTokens /></ProtectedRoute>} />
+
+        <Route path="/vendor" element={<ProtectedRoute allowedRoles={['vendor']}><VendorDashboard /></ProtectedRoute>} />
+        <Route path="/vendor/apply" element={<ProtectedRoute allowedRoles={['vendor']}><VendorApply /></ProtectedRoute>} />
+        <Route path="/vendor/exchange" element={<ProtectedRoute allowedRoles={['vendor']}><VendorExchange /></ProtectedRoute>} />
+      </Routes>
+    </>
+  );
+}
