@@ -56,8 +56,78 @@ const developers = [
         }}>
           The team behind BharatChain
         </p>
-        
+        <div className="grid-4" style={{ maxWidth: '1000px', margin: '0 auto' }}>
+          {developers.map((dev, i) => (
+            <div key={i} className="card developer-card" style={{
+              textAlign: 'center',
+              padding: '2rem 1.5rem',
+              position: 'relative',
+              overflow: 'hidden'
+            }}>
+              <div style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                height: '4px',
+                background: 'var(--accent-gradient)',
+              }} />
+
+              <div style={{
+                width: 64,
+                height: 64,
+                borderRadius: '50%',
+                background: 'var(--accent-gradient)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '1.8rem',
+                margin: '0 auto 1rem',
+                boxShadow: '0 4px 20px var(--accent-glow)',
+              }}>
+                {dev.avatar}
+              </div>
+
+              <h3 style={{ fontSize: '1.1rem', marginBottom: '0.25rem' }}>{dev.name}</h3>
+              <p style={{
+                fontSize: '0.8rem',
+                color: 'var(--accent-primary)',
+                fontWeight: 500,
+                marginBottom: '1rem'
+              }}>{dev.role}</p>
+
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '0.75rem' }}>
+                <a href={`mailto:${dev.email}`} title="Email"
+                  style={{ color: 'var(--text-muted)', transition: 'color 0.2s' }}
+                  onMouseEnter={e => e.target.style.color = 'var(--accent-primary)'}
+                  onMouseLeave={e => e.target.style.color = 'var(--text-muted)'}
+                >
+                  <FiMail size={18} />
+                </a>
+                <a href={dev.linkedin} target="_blank" rel="noreferrer" title="LinkedIn"
+                  style={{ color: 'var(--text-muted)', transition: 'color 0.2s' }}
+                  onMouseEnter={e => e.target.style.color = '#0077b5'}
+                  onMouseLeave={e => e.target.style.color = 'var(--text-muted)'}
+                >
+                  <FiLinkedin size={18} />
+                </a>
+                <a href={dev.github} target="_blank" rel="noreferrer" title="GitHub"
+                  style={{ color: 'var(--text-muted)', transition: 'color 0.2s' }}
+                  onMouseEnter={e => e.target.style.color = 'var(--text-primary)'}
+                  onMouseLeave={e => e.target.style.color = 'var(--text-muted)'}
+                >
+                  <FiGithub size={18} />
+                </a>
+              </div>
+            </div>
+          ))}
         </div>
-  )
+      </div>
+    </section>
+  );
+}
+
+
+
 
 
