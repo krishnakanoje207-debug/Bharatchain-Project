@@ -32,4 +32,56 @@ contract VendorRegistry is AccessControl {
         uint256 registeredAt;
         uint256 approvedAt;
         bool rbiTransferConfirmed;   // Set true when RBI sends real INR
+        walletToVendorId[msg.sender] = vendorId;
+        _allVendorIds.push(vendorId);
+
+        emit VendorRegistered(vendorId, msg.sender, vendorType);
+        return vendorId;
+    }
+    function registerVendorByAdmin(
+        address vendorWallet,
+        VendorType vendorType,
+        string calldata businessName,
+        bytes32 credentialHash,
+        bytes32 bankAccountHash,
+        bytes32 ifscHash
+    ) external onlyRole(ADMIN_ROLE) returns (uint256) {
+        require(walletToVendorId[vendorWallet] == 0 ||
+                _vendors[walletToVendorId[vendorWallet]].walletAddress == address(0),
+                "Wallet already registered as vendor");
+
+        uint256 vendorId = ++_vendorCounter;
+        _vendors[vendorId] = Vendor({
+            id: vendorId,
+            walletAddress: vendorWallet,
+            vendorType: vendorType,
+            status: VendorStatus.Approved,  // AUTO-APPROVED
+            businessName: businessName,
+            credentialHash: credentialHash,
+            bankAccountHash: bankAccountHash,
+            ifscHash: ifscHash,
+            tokenBalance: 0,
+            exchangedAmount: 0,
+            exchangeStatus: ExchangeStatus.None,
+            exchangeRequestAmount: 0,
+            registeredAt: block.timestamp,
+            approvedAt: block.timestamp,
+            rbiTransferConfirmed: false
+        });
+
+        walletToVendorId[vendorWallet] = vendorId;
+        _allVendorIds.push(vendorId);
+
+        emit VendorRegistered(vendorId, vendorWallet, vendorType);
+        emit VendorApproved(vendorId, block.timestamp);
+        return vendorId;
+    }
+
+
+    function approvevendor(uint256 vendorId) external onlyRole(ADMIN_ROLE){
+        vendor storage vendor = _vendor[vendorId];
+        require(vendor.walletAddress!=address(0),"vendor does not exist");
+        require(vendor status == VendorStatus.Pending,"vendor not verified");
+        vendor.approvedAt =block.timestamp;
+        emit VendorApproved(vendorId,block.timestamp);
     }
