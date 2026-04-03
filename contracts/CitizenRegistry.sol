@@ -36,7 +36,27 @@ contract CitizenRegistry is AccessControl{
         bytes32 mobileHash;
         uint256 schemeId;
     }
-    
+    // Storage 
+    mapping(uint256 => Citizen) private _citizens;// data storage for Citizens
+    mapping(address => uint256) public walletToCitizenId; // wallet to citizen Id storage
+    mapping(bytes32 => bool) public commitmentUsed; // is zkcommitment used or not
+    uint256 private _citizenCounter; // no. of citizens
+    uint256[] private _allCitizenIds;// array for CitizenIds
+    // events for this contract
+    event CitizenRegistered(uint256 indexed citizenId, address indexed wallet, bytes32 zkCommitment);
+    event CitizenApproved(uint256 indexed citizenId, uint256 timestamp);
+    event CitizenRejected(uint256 indexed citizenId, uint256 timestamp);
+    event CitizenFunded(uint256 indexed citizenId, uint256 amount, uint256 timestamp);
+
+    //constructor for the contract
+    constructor(address _zkVerifier){// taking address of zkVerifier as input
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(ADMIN_ROLE, msg.sender);
+        zkVerifier = IZKVerifier(_zkVerifier);// assigning the address to an instance 
+    }
+
+
+
 
 }
 
