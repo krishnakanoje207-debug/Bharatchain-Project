@@ -140,6 +140,40 @@ router.get("/wallet-info", async (req, res) => {
     res.json({ wallet: user.wallet_address, ethBalance: "0", tokenBalance: "0" });
   }
 });
+// api for looking up vendor details by phone number
+router.post("/lookup-vendor", async (req, res) => {
+  const { vendorPhone } = req.body;
+  const db = req.app.locals.db;
 
+  if (!vendorPhone) return res.status(400).json({ error: "Vendor phone number required" });
 
+  // Look up vendor in vendor_applications by phone
+  const vendor = await db.prepare(`
+    SELECT va.*, u.wallet_address, u.phone
+    FROM vendor_applications va
+    JOIN users u ON va.user_id = u.id
+    WHERE u.phone = ? AND va.status = 'Approved'
+  `).get(vendorPhone);
+
+  if (!vendor) {
+    // Check if vendor exists but not approved
+    const pending = await db.prepare(`
+      SELECT va.status FROM vendor_applications va
+      JOIN users u ON va.user_id = u.id WHERE u.phone = ?
+    `).get(vendorPhone);
+
+    if (pending) {
+      return res.status(403).json({ error: `Vendor exists but status is "${pending.status}". Only government-approved vendors can receive payments.`, verified: false });
+    }
+    return res.status(404).json({ error: "No registered vendor found with this phone number.", verified: false });
+  }
+
+  res.json({
+    verified: true,
+    vendorName: vendor.business_name,
+    vendorType: vendor.vendor_type,
+    walletAddress: vendor.wallet_address,
+    phone: vendor.phone
+  });
+});
 
