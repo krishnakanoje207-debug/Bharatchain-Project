@@ -108,8 +108,35 @@ contract WelfareScheme is
         instalmentSchedule[schemeId][instalmentNumber] = scheduledTimestamp;
         emit InstalmentScheduled(schemeId, instalmentNumber, scheduledTimestamp);
     }
-    
-
+    // function to update  scheme
+    function updateSchemeStatus(uint256 schemeId, SchemeStatus newStatus)
+        external onlyRole(ADMIN_ROLE)
+    {
+        Scheme storage scheme = _schemes[schemeId];
+        require(scheme.createdAt != 0, "Scheme does not exist");
+        require(scheme.status != SchemeStatus.Cancelled, "Cannot update cancelled scheme");// checking if the scheme is cancelled or not
+        scheme.status = newStatus;
+        scheme.updatedAt = block.timestamp;// creating a timestamp for when the scheme details are updated
+        emit SchemeStatusUpdated(schemeId, newStatus, block.timestamp);
+    }
+    // function for recording the distribution
+    function recordDistribution(uint256 schemeId, uint256 amount, uint256 beneficiaries)
+        external onlyRole(ADMIN_ROLE)
+    {
+        Scheme storage scheme = _schemes[schemeId];
+        require(scheme.status == SchemeStatus.Active, "Scheme not active");
+        // updating details of main block after distribution
+        scheme.distributedFund += amount;
+        scheme.beneficiaryCount += beneficiaries;
+        scheme.currentInstalment++;
+        scheme.updatedAt = block.timestamp;
+        emit FundsDistributed(schemeId, amount, beneficiaries);
+        // checking if the  distributed fund has not exceeded the total fund, if done then mark the scheme as completed
+        if (scheme.distributedFund >= scheme.totalFund) {
+            scheme.status = SchemeStatus.Completed;
+            emit SchemeStatusUpdated(schemeId, SchemeStatus.Completed, block.timestamp);
+        }
+    }
 
 
 
