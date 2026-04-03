@@ -144,3 +144,35 @@ router.get("/vendors", requireRole("admin", "rbi_admin"), async (req, res) => {
     }
     res.json({ success: true, message: "Vendor approved" });
 });
+
+router.post("/vendors/:id/reject", requireRole("admin"), async (req, res) => {
+    const db = req.app.locals.db;
+    const { reason } = req.body;
+    const app = await db.prepare("SELECT * FROM vendor_applications WHERE id = ?").get(req.params.id);
+    if (!app) return res.status(404).json({ error: "Vendor application not found" });
+    if (app.status !== "Pending") return res.status(400).json({ error: `Cannot reject — status is ${app.status}` });
+
+    const rejectionReason = reason || "Application did not meet vendor criteria";
+    await db.prepare("UPDATE vendor_applications SET status = 'Rejected', rejection_reason = ?, reviewed_at = NOW() WHERE id = ?")
+        .run(rejectionReason, req.params.id);
+
+    const user = await db.prepare("SELECT phone, name FROM users WHERE id = ?").get(app.user_id);
+    if (user) {
+        await db.prepare("INSERT INTO notifications (user_id, type, recipient, message) VALUES (?, ?, ?, ?)")
+        .run(app.user_id, "sms", user.phone, `Dear ${user.name}, your vendor application was REJECTED. Reason: ${rejectionReason}`);
+        console.log(`❌ [VENDOR REJECTED] ${app.business_name} — Reason: ${rejectionReason}`);
+    }
+    res.json({ success: true, message: "Vendor rejected", reason: rejectionReason });
+    });
+
+    router.post("/verify-itr/:vendorId", requireRole("admin", "rbi_admin"), async (req, res) => {
+    const db = req.app.locals.db;
+    const vendor = await db.prepare("SELECT * FROM vendors_gov_db WHERE id = ?").get(req.params.vendorId);
+    if (!vendor) return res.status(404).json({ error: "Vendor not found" });
+    console.log(`📋 [ITR VERIFIED] ${vendor.business_name} — Status: ${vendor.itr_status}`);
+    res.json({ verified: true, vendor: { id: vendor.id, businessName: vendor.business_name, itrStatus: vendor.itr_status } });
+    });
+
+    router.post("/confirm-transfer/:vendorId", requireRole("rbi_admin"), async (req, res) => {
+    const db = req.app.locals.db;
+    const { amount, transactionRef } = req.body;
