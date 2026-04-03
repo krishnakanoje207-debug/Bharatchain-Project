@@ -24,6 +24,10 @@ contract TransactionLedger is AccessControl{
     }
     TxRecord[] private _transactions;// array of transactions with datatype of TxRecord
     uint256 private _txCounter;//  Transaction counter
+
+    uint256[] private _publicTxIds;
+    uint256[] private _privateTxIds;
+
     // event for the contract
     event TransactionLogged(
         uint256 indexed txId,
@@ -71,5 +75,36 @@ contract TransactionLedger is AccessControl{
     function getTransaction(uint256 txId) external view returns (TxRecord memory) {
         require(txId < _transactions.length, "Transaction does not exist");
         return _transactions[txId];
+    }
+    // get the public transactions
+    function getPublicTransactions() external view returns (TxRecord[] memory) {
+        TxRecord[] memory publicTxns = new TxRecord[](_publicTxIds.length);// storing it in a new array
+        for (uint256 i = 0; i < _publicTxIds.length; i++) {
+            publicTxns[i] = _transactions[_publicTxIds[i]];
+        }
+        return publicTxns;// returning the new array
+    }
+    //3. get count of private Transactions
+    function getPrivateTransactionCount() external view returns (uint256) {
+        return _privateTxIds.length;
+    }
+    //4.get total transactions
+    function getTotalTransactionCount() external view returns (uint256) {
+        return _transactions.length;
+    }
+    // get the transactions in a paginated form
+    function getTransactionsPaginated(uint256 offset, uint256 limit) 
+        external view returns (TxRecord[] memory) 
+    {
+        require(offset < _transactions.length, "Offset out of bounds");// checking  if offset is less than the length of transactions or not
+        uint256 end = offset + limit;
+        if (end > _transactions.length) {// there are not enough transaction to return(limit is exceeded)
+            end = _transactions.length;
+        }
+        TxRecord[] memory result = new TxRecord[](end - offset);// storing in a new array
+        for (uint256 i = offset; i < end; i++) {
+            result[i - offset] = _transactions[i];// resultant array index starts from 0 but transaction index starts from the offset given
+        }
+        return result;
     }
 }
