@@ -177,3 +177,118 @@ router.post("/lookup-vendor", async (req, res) => {
   });
 });
 
+// API for citizen to pay vendor via mobile number through on-chain transfer
+router.post("/pay-vendor", async (req, res) => {
+  const { vendorPhone, amount } = req.body;
+  const db = req.app.locals.db;
+
+  if (!vendorPhone || !amount) return res.status(400).json({ error: "Vendor phone and amount required" });
+  const amountNum = parseFloat(amount);
+  if (isNaN(amountNum) || amountNum <= 0) return res.status(400).json({ error: "Amount must be a positive number" });
+
+  // 1. Get citizen's wallet
+  const citizen = await db.prepare("SELECT wallet_address, wallet_private_key_enc, name FROM users WHERE id = ?").get(req.user.userId);
+  if (!citizen || !citizen.wallet_private_key_enc) {
+    return res.status(400).json({ error: "No wallet found. Apply for a scheme first." });
+  }
+
+  // 2. Look up vendor by phone — must be approved
+  const vendor = await db.prepare(`
+    SELECT va.business_name, va.status, u.wallet_address as vendor_wallet, u.phone
+    FROM vendor_applications va
+    JOIN users u ON va.user_id = u.id
+    WHERE u.phone = ? AND va.status = 'Approved'
+  `).get(vendorPhone);
+
+  if (!vendor) {
+    return res.status(404).json({ error: "No government-approved vendor found with this phone number. Payment blocked." });
+  }
+
+  if (!vendor.vendor_wallet) {
+    return res.status(400).json({ error: "Vendor has no wallet address." });
+  }
+
+  try {
+    // 3. Load fresh contract addresses
+    let freshAddresses = {};
+    try {
+      delete require.cache[require.resolve("../../frontend/src/config/deployed-addresses.json")];
+      freshAddresses = require("../../frontend/src/config/deployed-addresses.json");
+    } catch {
+      delete require.cache[require.resolve("../../deployed-addresses.json")];
+      freshAddresses = require("../../deployed-addresses.json");
+    }
+
+    // 4. Create citizen signer (decrypt private key → sign transfer directly)
+    const { decryptPrivateKey } = require("../utils/walletGenerator");
+    const citizenPrivKey = decryptPrivateKey(citizen.wallet_private_key_enc);
+    const provider = new ethers.JsonRpcProvider(RPC_URL);
+    const citizenSigner = new ethers.Wallet(citizenPrivKey, provider);
+
+    // 5. Get DigitalRupee contract connected to citizen's signer
+    const digitalRupee = new ethers.Contract(
+      freshAddresses.DigitalRupee,
+      [
+        "function transfer(address to, uint256 amount) returns (bool)",
+        "function balanceOf(address) view returns (uint256)"
+      ],
+      citizenSigner
+    );
+
+    // 6. Check balance
+    const balance = await digitalRupee.balanceOf(citizen.wallet_address);
+    const amountWei = ethers.parseEther(String(amountNum));
+    if (balance < amountWei) {
+      return res.status(400).json({
+        error: `Insufficient balance. You have ₹${ethers.formatEther(balance)} but tried to send ₹${amountNum}.`
+      });
+    }
+
+    // 7. Execute transfer: citizen → vendor (signed by citizen's own key)
+    const tx = await digitalRupee.transfer(vendor.vendor_wallet, amountWei);
+    const receipt = await tx.wait();
+
+    // 8. Log to DB transaction_log
+    await db.prepare("INSERT INTO transaction_log (tx_type, from_address, to_address, amount, description, tx_hash) VALUES (?, ?, ?, ?, ?, ?)")
+      .run("CitizenToVendor", citizen.wallet_address, vendor.vendor_wallet, amountNum,
+        `${citizen.name} → ${vendor.business_name} (₹${amountNum})`, receipt.hash);
+
+    // 9. Log to on-chain TransactionLedger (as deployer/admin with LOGGER_ROLE)
+    try {
+      const { getTransactionLedger, withTxLock } = require("../utils/contractSigner");
+      await withTxLock(async () => {
+        const { contract: ledger } = getTransactionLedger();
+        await (await ledger.logTransaction(
+          2, // CitizenToVendor
+          citizen.wallet_address,
+          vendor.vendor_wallet,
+          amountWei,
+          `Payment: ${citizen.name} → ${vendor.business_name}`
+        )).wait();
+      });
+      console.log(`   📒 Logged citizen→vendor transfer to TransactionLedger`);
+    } catch (logErr) {
+      console.warn(`   ⚠️ TransactionLedger log skipped: ${logErr.reason || logErr.message}`);
+    }
+
+    // 10. Log notification in DB
+    await db.prepare("INSERT INTO notifications (user_id, type, recipient, message) VALUES (?, ?, ?, ?)")
+      .run(req.user.userId, "system", citizen.wallet_address,
+        `Sent ₹${amountNum} to "${vendor.business_name}" (${vendorPhone}). TX: ${receipt.hash.slice(0,14)}...`);
+
+    const newBalance = await digitalRupee.balanceOf(citizen.wallet_address);
+
+    res.json({
+      success: true,
+      txHash: receipt.hash,
+      vendorName: vendor.business_name,
+      amountSent: amountNum,
+      newBalance: ethers.formatEther(newBalance),
+      message: `Successfully sent ₹${amountNum} to ${vendor.business_name}`
+    });
+  } catch (err) {
+    console.error("Pay-vendor error:", err.reason || err.message);
+    res.status(500).json({ error: err.reason || err.message || "Transfer failed" });
+  }
+});
+
