@@ -1,7 +1,7 @@
 const { db } = require("./pg-wrapper");
 const bcrypt = require("bcryptjs");
 
-asyn function initDatabase() {
+async function initDatabase() {
     await db.exec(`
         CREATE TABLE IF NOT EXISTS users (
             id SERIAL PRIMARY KEY,
@@ -145,6 +145,35 @@ asyn function initDatabase() {
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     `);
+
+    try {
+        await db.exec(`CREATE UNIQUE INDEX idx_users_email ON users(email) WHERE email IS NOT NULL`);
+    } catch(e) {}
+    try {
+        await db.exec(`CREATE UNIQUE INDEX idx_citizen_apps_pan ON citizen_applications(pan) WHERE pan IS NOT NULL`);
+    } catch(e) {}
+    try {
+        await db.exec(`CREATE UNIQUE INDEX idx_citizen_apps_phone ON citizen_applications(phone) WHERE phone IS NOT NULL`);
+    } catch(e) {}
+    try {
+        await db.exec(`CREATE UNIQUE INDEX idx_vendor_apps_bank ON vendor_applications(bank_account) WHERE bank_account IS NOT NULL`);
+    } catch(e) {}
+    try {
+        await db.exec(`CREATE UNIQUE INDEX idx_vendor_apps_mobile ON vendor_applications(mobile) WHERE mobile IS NOT NULL`);
+    } catch(e) {}
+    try {
+        await db.exec(`CREATE UNIQUE INDEX idx_citizens_gov_mobile ON citizens_gov_db(mobile)`);
+    } catch(e) {}
+    try {
+        await db.exec(`CREATE UNIQUE INDEX idx_citizens_gov_kisan ON citizens_gov_db(kisan_card) WHERE kisan_card IS NOT NULL`);
+    } catch(e) {}
+
+    try { await db.exec(`ALTER TABLE citizen_applications ADD COLUMN on_chain_citizen_id INTEGER`);} catch(e) {}
+    try { await db.exec(`ALTER TABLE citizen_applications ADD COLUMN on_chain_tx_hash TEXT`); } catch(e) {}
+    try { await db.exec('ALTER TABLE event_triggers ADD COLUMN retry_count INTEGER DEFAULT 0'); } catch(e) {}
+    try { await db.exec('ALTER TABLE event_triggers ADD COLUMN error_message TEXT'); } catch(e) {}
+    try { await db.exec('ALTER TABLE vendor_applications ADD COLUMN on_chain_vendor_id INTEGER'); } catch(e) {}
+    
 
 
 
