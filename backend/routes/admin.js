@@ -344,3 +344,57 @@ router.post("/citizens/:id/reject", requireRole("admin"), async (req, res) => {
 
     res.json({ success: true, message: "Application rejected", reason: rejectionReason });
 });
+
+router.get("/schemes", requireRole("admin", "rbi_admin"), async (req, res) => {
+    const db = req.app.locals.db;
+    const schemes = await db.prepare("SELECT * FROM schemes ORDER BY created_at DESC").all();
+    res.json({ schemes });
+});
+
+router.post("/schemes", requireRole("admin"), async (req, res) => {
+    const db = req.app.locals.db;
+    const { name, description, totalFund, perCitizenAmount, instalmentCount, instalmentAmount, targetOccupation } = req.body;
+
+    if (!name || !totalFund || !perCitizenAmount) {
+        return res.status(400).json({ error: "Name, total fund, and per-citizen amount are required" });
+    }
+
+    const result = await db.prepare(`
+        INSERT INTO schemes (name, description, total_fund, per_citizen_amount, instalment_count, instalment_amount, target_occupation, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(name, description || "", totalFund, perCitizenAmount, instalmentCount || 1, instalmentAmount || perCitizenAmount, targetOccupation || "Farmer", req.body.status || "Active");
+
+    console.log(`📋 [NEW SCHEME] ${name} — ₹${totalFund.toLocaleString()} — Status: ${req.body.status || 'Active'}`);
+    res.status(201).json({ success: true, schemeId: result.lastInsertRowid, message: "Scheme created" });
+});
+
+router.delete("/schemes/:id", requireRole("admin"), async (req, res) => {
+    const db = req.app.locals.db;
+    const scheme = await db.prepare("SELECT * FROM schemes WHERE id = ?").get(req.params.id);
+    if (!scheme) return res.status(404).json({ error: "Scheme not found" });
+
+    // Check if scheme has applications
+    const appCountRow = await db.prepare("SELECT COUNT(*) as c FROM citizen_applications WHERE scheme_id = ?").get(req.params.id);
+    const appCount = Number(appCountRow.c);
+    if (appCount > 0) {
+        return res.status(400).json({ error: `Cannot delete scheme with ${appCount} application(s). Mark as Completed instead.` });
+    }
+
+    await db.prepare("DELETE FROM event_triggers WHERE scheme_id = ?").run(req.params.id);
+    await db.prepare("DELETE FROM schemes WHERE id = ?").run(req.params.id);
+    console.log(`🗑️ [SCHEME DELETED] ${scheme.name}`);
+    res.json({ success: true, message: `Scheme "${scheme.name}" deleted` });
+});
+
+router.put("/schemes/:id/status", requireRole("admin"), async (req, res) => {
+    const db = req.app.locals.db;
+    const { status } = req.body;
+    if (!['Upcoming', 'Active', 'Completed'].includes(status)) {
+        return res.status(400).json({ error: "Status must be Upcoming, Active, or Completed" });
+    }
+    const scheme = await db.prepare("SELECT * FROM schemes WHERE id = ?").get(req.params.id);
+    if (!scheme) return res.status(404).json({ error: "Scheme not found" });
+    await db.prepare("UPDATE schemes SET status = ? WHERE id = ?").run(status, req.params.id);
+    res.json({ success: true, message: `Scheme status updated to ${status}` });
+});
+
