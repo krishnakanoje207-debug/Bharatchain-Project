@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/access/AcessControl.sol";
+import "@openzeppelin/contracts/access/AccessControl.sol";
 
-contract WelfareScheme is
-    AccessControl // initiating the contract
-{
+contract WelfareScheme is AccessControl  {  
+    // initiating the contract
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE"); // using the keccak256 hashing function for address of admin role
 
     enum SchemeStatus {
