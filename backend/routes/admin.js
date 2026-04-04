@@ -411,3 +411,47 @@ router.get("/event-triggers", requireRole("rbi_admin", "admin"), async (req, res
     res.json({ triggers });
 });
 
+router.post("/event-triggers", requireRole("rbi_admin"), async (req, res) => {
+    const db = req.app.locals.db;
+    const { schemeId, scheduledDate, scheduledTime } = req.body;
+
+    if (!schemeId || !scheduledDate || !scheduledTime) {
+        return res.status(400).json({ error: "Scheme ID, date, and time are required" });
+    }
+
+    const scheme = await db.prepare("SELECT * FROM schemes WHERE id = ?").get(schemeId);
+    if (!scheme) return res.status(404).json({ error: "Scheme not found" });
+
+    // Check for existing active trigger for this scheme
+    const existing = await db.prepare("SELECT id FROM event_triggers WHERE scheme_id = ? AND status = 'Scheduled'").get(schemeId);
+    if (existing) return res.status(409).json({ error: "A distribution trigger is already scheduled for this scheme" });
+
+    const result = await db.prepare(`
+        INSERT INTO event_triggers (scheme_id, instalment_number, scheduled_date, scheduled_time, created_by)
+        VALUES (?, 1, ?, ?, ?)
+    `).run(schemeId, scheduledDate, scheduledTime, req.user.userId);
+
+    console.log(`⏰ [EVENT TRIGGER] Scheme #${schemeId} — Lump-sum ₹${scheme.per_citizen_amount} — ${scheduledDate} ${scheduledTime}`);
+    res.status(201).json({ success: true, triggerId: result.lastInsertRowid, message: "Distribution trigger scheduled" });
+});
+
+router.put("/event-triggers/:id", requireRole("rbi_admin"), async (req, res) => {
+    const db = req.app.locals.db;
+    const { scheduledDate, scheduledTime, resetToScheduled } = req.body;
+    const trigger = await db.prepare("SELECT * FROM event_triggers WHERE id = ?").get(req.params.id);
+    if (!trigger) return res.status(404).json({ error: "Trigger not found" });
+
+    // Allow retry of Failed triggers
+    if (resetToScheduled && trigger.status === "Failed") {
+        await db.prepare("UPDATE event_triggers SET status = 'Scheduled', retry_count = 0, error_message = NULL WHERE id = ?")
+        .run(req.params.id);
+        return res.json({ success: true, message: "Trigger reset to Scheduled — will retry on next cycle" });
+    }
+
+    if (trigger.status !== "Scheduled") return res.status(400).json({ error: "Can only edit scheduled triggers" });
+
+    await db.prepare("UPDATE event_triggers SET scheduled_date = ?, scheduled_time = ? WHERE id = ?")
+        .run(scheduledDate || trigger.scheduled_date, scheduledTime || trigger.scheduled_time, req.params.id);
+
+    res.json({ success: true, message: "Trigger updated" });
+});
