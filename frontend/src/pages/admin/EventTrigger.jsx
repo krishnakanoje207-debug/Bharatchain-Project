@@ -153,3 +153,83 @@ export default function EventTriggers() {
           </div>
         )}
 
+        {/* Triggers Table */}
+        <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid var(--border)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)' }}>
+                <th style={{ padding: '1rem', textAlign: 'left' }}>ID</th>
+                <th style={{ padding: '1rem', textAlign: 'left' }}>Scheme</th>
+                <th style={{ padding: '1rem', textAlign: 'left' }}>Date</th>
+                <th style={{ padding: '1rem', textAlign: 'left' }}>Time</th>
+                <th style={{ padding: '1rem', textAlign: 'left' }}>Status</th>
+                <th style={{ padding: '1rem', textAlign: 'left' }}>Countdown / Executed</th>
+                <th style={{ padding: '1rem', textAlign: 'left' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {triggers.map(t => {
+                const countdown = getCountdown(t);
+                const isPastDue = !countdown && t.status === 'Scheduled';
+                return (
+                  <tr key={t.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.85rem' }}>#{t.id}</td>
+                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.85rem' }}>{t.scheme_name || 'Scheme'}</td>
+                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.85rem' }}>{t.scheduled_date}</td>
+                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.85rem' }}>{t.scheduled_time}</td>
+                    <td style={{ padding: '0.75rem 1rem' }}>
+                      <span className={`badge ${t.status === 'Executed' ? 'badge-success' : t.status === 'Failed' ? 'badge-error' : t.status === 'Cancelled' ? 'badge-secondary' : 'badge-warning'}`}>
+                        {t.status}
+                      </span>
+                    </td>
+                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                      {t.status === 'Executed' && (
+                        <span>✅ {new Date(t.executed_at).toLocaleString()}</span>
+                      )}
+                      {t.status === 'Failed' && (
+                        <span style={{ color: 'var(--error)', fontSize: '0.78rem' }}>
+                          <FiAlertTriangle size={12} /> {t.error_message?.slice(0, 50) || 'Distribution failed'}
+                        </span>
+                      )}
+                      {t.status === 'Scheduled' && countdown && (
+                        <span style={{ fontFamily: 'monospace' }}>⏳ {countdown}</span>
+                      )}
+                      {isPastDue && (
+                        <span style={{ color: 'var(--warning)', animation: 'pulse 2s infinite' }}>
+                          ⚡ Executing soon...
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ padding: '0.75rem 1rem' }}>
+                      {t.status === 'Executed' && <span style={{ color: 'var(--success)', fontSize: '0.85rem' }}>✓ Complete</span>}
+                      {t.status === 'Failed' && (
+                        <button onClick={() => retryTrigger(t.id)} className="btn btn-sm btn-warning">🔄 Retry</button>
+                      )}
+                      {t.status === 'Scheduled' && (
+                        <button onClick={() => executeTrigger(t.id)} className="btn btn-sm btn-primary" disabled={executing === t.id}
+                          style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem' }}>
+                          {executing === t.id ? '⏳ Executing...' : '🚀 Execute Now'}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+              {triggers.length === 0 && (
+                <tr><td colSpan={7} style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>No triggers scheduled yet</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '1rem', textAlign: 'center' }}>
+          Server checks every 60s for due triggers • Dashboard refreshes every 30s • Countdown updates every second
+        </p>
+      </div>
+    </div>
+  );
+}
+
+
+
+
