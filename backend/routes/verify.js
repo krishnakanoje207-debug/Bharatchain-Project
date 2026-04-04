@@ -200,3 +200,115 @@ router.post("/citizen", authenticateToken, async (req, res) => {
     schemeName: scheme.name
   });
 });
+
+/**
+ * POST /api/verify/vendor
+ * Submit vendor application (status = Pending, needs admin approval).
+ * Wallet generated but NOT activated until admin approves.
+ */
+router.post("/vendor", authenticateToken, async (req, res) => {
+  const { businessName, vendorType, credential, bankAccount, ifsc, mobile } = req.body;
+  const db = req.app.locals.db;
+
+  if (!businessName || !credential || !bankAccount || !ifsc) {
+    return res.status(400).json({ error: "Business name, credential, bank account, and IFSC are required" });
+  }
+
+  // Check if already applied
+  const existing = await db.prepare("SELECT * FROM vendor_applications WHERE user_id = ?").get(req.user.userId);
+  if (existing) {
+    if (existing.status === "Approved") return res.status(409).json({ error: "Already approved as a vendor", alreadyApproved: true });
+    if (existing.status === "Pending") return res.status(409).json({ error: "You already have a pending vendor application", alreadyPending: true });
+    if (existing.status === "Rejected") await db.prepare("DELETE FROM vendor_applications WHERE id = ?").run(existing.id);
+  }
+
+  // Check bank account uniqueness
+  const bankUsed = await db.prepare("SELECT id FROM vendor_applications WHERE bank_account = ? AND user_id != ?").get(bankAccount, req.user.userId);
+  if (bankUsed) {
+    return res.status(409).json({ error: "This bank account is already registered by another vendor" });
+  }
+
+  // Generate wallet (stored but not active until admin approval)
+  const phone = req.user.phone || mobile || "0000000000";
+  const { address, privateKey } = generateDeterministicWallet(bankAccount, phone);
+  const encryptedKey = encryptPrivateKey(privateKey);
+
+  // Store wallet
+  await db.prepare("UPDATE users SET wallet_address = ?, wallet_private_key_enc = ? WHERE id = ?")
+    .run(address, encryptedKey, req.user.userId);
+
+  // Create vendor application (PENDING — needs admin approval)
+  await db.prepare(`INSERT INTO vendor_applications (user_id, business_name, vendor_type, credential, bank_account, ifsc_code, mobile, wallet_address, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pending')`)
+    .run(req.user.userId, businessName, vendorType || "FarmingSupplier", credential, bankAccount, ifsc, phone, address);
+
+  console.log(`📋 [VENDOR APP] ${businessName} by ${req.user.name} — Status: Pending`);
+
+  res.json({
+    success: true,
+    pending: true,
+    message: "Vendor application submitted! Your wallet has been generated. Awaiting admin approval.",
+    walletAddress: address
+  });
+});
+
+/**
+ * GET /api/verify/my-applications
+ */
+router.get("/my-applications", authenticateToken, async (req, res) => {
+  const db = req.app.locals.db;
+  const apps = await db.prepare(`
+    SELECT ca.*, s.name as scheme_name FROM citizen_applications ca
+    LEFT JOIN schemes s ON ca.scheme_id = s.id
+    WHERE ca.user_id = ? ORDER BY ca.applied_at DESC
+  `).all(req.user.userId);
+  res.json({ applications: apps });
+});
+
+/**
+ * GET /api/verify/my-vendor-status
+ */
+router.get("/my-vendor-status", authenticateToken, async (req, res) => {
+  const db = req.app.locals.db;
+  const app = await db.prepare("SELECT * FROM vendor_applications WHERE user_id = ? ORDER BY created_at DESC LIMIT 1").get(req.user.userId);
+  const user = await db.prepare("SELECT wallet_address FROM users WHERE id = ?").get(req.user.userId);
+  res.json({
+    application: app || null,
+    walletAddress: user?.wallet_address || null,
+    status: app ? app.status : "not_applied"
+  });
+});
+
+/**
+ * GET /api/verify/schemes
+ */
+router.get("/schemes", async (req, res) => {
+  const db = req.app.locals.db;
+  const status = req.query.status; // optional filter
+  const schemes = status 
+    ? await db.prepare("SELECT * FROM schemes WHERE status = ?").all(status)
+    : await db.prepare("SELECT * FROM schemes WHERE status IN ('Active', 'Upcoming') ORDER BY CASE status WHEN 'Active' THEN 1 WHEN 'Upcoming' THEN 2 ELSE 3 END").all();
+  
+  // Add beneficiary counts
+  const beneficiaryCounts = await db.prepare(`
+    SELECT scheme_id, COUNT(*) as count FROM citizen_applications 
+    WHERE status IN ('Approved', 'Funded') GROUP BY scheme_id
+  `).all();
+  const beneficiaryMap = {};
+  for (const b of beneficiaryCounts) beneficiaryMap[b.scheme_id] = b.count;
+  const schemesWithBeneficiaries = schemes.map(s => ({ ...s, beneficiary_count: beneficiaryMap[s.id] || 0 }));
+
+  res.json({ schemes: schemesWithBeneficiaries });
+});
+
+/**
+ * GET /api/verify/notifications
+ */
+router.get("/notifications", authenticateToken, async (req, res) => {
+  const db = req.app.locals.db;
+  const notifications = await db.prepare("SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 50")
+    .all(req.user.userId);
+  res.json({ notifications });
+});
+
+module.exports = router;
