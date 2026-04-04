@@ -38,4 +38,57 @@ export function AuthProvider({ children }) {
     };
   }, [user]);
 
-  
+const fetchProfile = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/profile`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) throw new Error('Failed to fetch profile');
+      const userData = await response.json();
+      setUser(userData);
+    } catch (error) {
+      console.error('Error fetching profile:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const signup = async (phone, password, name, role, email, walletAddress) => {
+    const res = await fetch(`${API_BASE}/auth/signup`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, password, name, role, email, walletAddress })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    setToken(data.token); setUser(data.user);
+    localStorage.setItem('bharatchain_token', data.token);
+    return data;
+  };
+
+   const login = async (phone, password) => {
+    const res = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, password })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    setToken(data.token); setUser(data.user);
+    localStorage.setItem('bharatchain_token', data.token);
+    return data;
+  };
+
+  const logout = useCallback(() => {
+    setUser(null); setToken(null);
+    localStorage.removeItem('bharatchain_token');
+  }, []);
+
+  const updateWallet = async (walletAddress) => {
+    const res = await fetch(`${API_BASE}/auth/wallet`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ walletAddress })
+    });
+    if (res.ok) setUser(prev => ({ ...prev, wallet_address: walletAddress }));
+  };
+
