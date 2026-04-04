@@ -106,3 +106,39 @@ export default function VendorExchange() {
             ))}
           </div>
         </div>
+
+      {/* Exchange Form */}
+        <div className="card" style={{ padding: '2rem' }}>
+          <div className="form-group">
+            <label className="form-label">{t('exchange.amount')}</label>
+            <input
+              type="number"
+              className="form-input"
+              value={amount}
+              onChange={e => setAmount(e.target.value)}
+              placeholder={t('exchange.enterAmount')}
+              min="0"
+              style={{ fontSize: '1.2rem', textAlign: 'center', fontWeight: 700 }}
+            />
+          </div>
+
+          <button
+            onClick={requestExchange}
+            disabled={loading || !amount || parseFloat(amount) <= 0 || parseFloat(amount) > parseFloat(balance)}
+            className="btn btn-primary"
+            style={{ width: '100%', padding: '1rem', fontSize: '1rem' }}
+          >
+            <FiRefreshCw /> {loading ? t('exchange.submitting') : `${t('exchange.request')} ₹${amount || '0'} Exchange`}
+          </button>
+
+          {amount && parseFloat(amount) > parseFloat(balance) && (
+            <p style={{ color: 'var(--error)', fontSize: '0.8rem', textAlign: 'center', marginTop: '0.75rem' }}>
+              {t('exchange.insufficient')} (₹{parseFloat(balance).toLocaleString()})
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+   
