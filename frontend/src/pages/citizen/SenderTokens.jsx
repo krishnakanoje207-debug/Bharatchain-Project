@@ -83,4 +83,79 @@ export default function SendTokens() {
           </div>
         )}
 
-        
+        <div className="card" style={{ padding: '2rem' }}>
+          {/* Phone Number Input */}
+          <div className="form-group">
+            <label className="form-label"><FiPhone size={14} style={{ marginRight: '0.5rem' }} />Vendor Phone Number</label>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <input
+                className="form-input"
+                value={vendorPhone}
+                onChange={e => { setVendorPhone(e.target.value.replace(/\D/g, '')); setVendor(null); setError(''); }}
+                placeholder="Enter 10-digit phone number"
+                maxLength={10}
+                style={{ flex: 1 }}
+              />
+              <button
+                onClick={lookupVendor}
+                className="btn btn-secondary"
+                disabled={lookingUp || vendorPhone.length < 10}
+                style={{ whiteSpace: 'nowrap' }}
+              >
+                <FiSearch size={14} /> {lookingUp ? 'Looking up...' : 'Verify'}
+              </button>
+            </div>
+          </div>
+
+          {/* Vendor Info Card */}
+          {vendor && (
+            <div style={{
+              padding: '1rem',
+              borderRadius: 'var(--radius-sm)',
+              marginBottom: '1rem',
+              background: 'rgba(16,185,129,0.08)',
+              border: '1px solid rgba(16,185,129,0.25)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                <FiCheck color="var(--success)" />
+                <strong style={{ color: 'var(--success)', fontSize: '0.9rem' }}>Government-Verified Vendor</strong>
+              </div>
+              <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)' }}>{vendor.vendorName}</div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                Type: {vendor.vendorType === 'FarmingSupplier' ? '🌾 Farming Supplier' : '🌽 Crop Buyer'}
+              </div>
+            </div>
+          )}
+
+          {/* Amount Input */}
+          <div className="form-group">
+            <label className="form-label">Amount (₹ Digital Rupees)</label>
+            <input
+              type="number"
+              className="form-input"
+              value={amount}
+              onChange={e => setAmount(e.target.value)}
+              placeholder="Enter amount"
+              min="0"
+              step="1"
+            />
+          </div>
+
+          {/* Send Button */}
+          <button
+            onClick={sendPayment}
+            disabled={loading || !vendor || !amount || parseFloat(amount) <= 0}
+            className="btn btn-primary"
+            style={{ width: '100%', padding: '0.9rem', fontSize: '1rem' }}
+          >
+            <FiSend /> {loading ? 'Processing...' : `Send ₹${amount || '0'} to ${vendor?.vendorName || 'Vendor'}`}
+          </button>
+
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', marginTop: '1rem' }}>
+            Tokens are transferred directly from your wallet to the vendor's wallet. Only government-approved vendors can receive payments.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
