@@ -345,6 +345,7 @@ router.post("/citizens/:id/reject", requireRole("admin"), async (req, res) => {
     res.json({ success: true, message: "Application rejected", reason: rejectionReason });
 });
 
+//scheme endpoints
 router.get("/schemes", requireRole("admin", "rbi_admin"), async (req, res) => {
     const db = req.app.locals.db;
     const schemes = await db.prepare("SELECT * FROM schemes ORDER BY created_at DESC").all();
@@ -396,5 +397,17 @@ router.put("/schemes/:id/status", requireRole("admin"), async (req, res) => {
     if (!scheme) return res.status(404).json({ error: "Scheme not found" });
     await db.prepare("UPDATE schemes SET status = ? WHERE id = ?").run(status, req.params.id);
     res.json({ success: true, message: `Scheme status updated to ${status}` });
+});
+
+//event triggers
+router.get("/event-triggers", requireRole("rbi_admin", "admin"), async (req, res) => {
+    const db = req.app.locals.db;
+    const triggers = await db.prepare(`
+        SELECT et.*, s.name as scheme_name
+        FROM event_triggers et
+        LEFT JOIN schemes s ON et.scheme_id = s.id
+        ORDER BY et.scheduled_date ASC, et.scheduled_time ASC
+    `).all();
+    res.json({ triggers });
 });
 
