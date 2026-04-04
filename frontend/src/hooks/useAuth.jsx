@@ -92,3 +92,46 @@ const fetchProfile = async () => {
     if (res.ok) setUser(prev => ({ ...prev, wallet_address: walletAddress }));
   };
 
+  const authFetch = useCallback(async (url, options = {}) => {
+    return fetch(url, { ...options, headers: { ...options.headers, Authorization: `Bearer ${token}` } });
+  }, [token]);
+
+  const sendOtp = async (phone) => {
+    const res = await fetch(`${API_BASE}/auth/send-otp`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    return data;
+  };
+
+  const verifyOtp = async (phone, otp) => {
+    const res = await fetch(`${API_BASE}/auth/verify-otp`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, otp })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    return data;
+  };
+
+  return (
+    <AuthContext.Provider value={{
+      user, token, loading, signup, login, logout, updateWallet, authFetch,
+      sendOtp, verifyOtp,
+      isAdmin: user?.role === 'admin', isRbiAdmin: user?.role === 'rbi_admin',
+      isCitizen: user?.role === 'citizen', isVendor: user?.role === 'vendor',
+      isAnyAdmin: user?.role === 'admin' || user?.role === 'rbi_admin'
+    }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export function useAuth() {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error('useAuth must be used within AuthProvider');
+  return ctx;
+}
+
