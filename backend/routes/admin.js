@@ -4,594 +4,600 @@ const { authenticateToken, requireRole } = require("../middleware/auth");
 const router = express.Router();
 router.use(authenticateToken);
 
-
+// ==================== STATS (both admins) ====================
 router.get("/stats", requireRole("admin", "rbi_admin"), async (req, res) => {
-    const db = req.app.locals.db;
-    const totalCitizensRow = await db.prepare("SELECT COUNT(*) as c FROM citizens_gov_db").get();
-    const totalCitizens = Number(totalCitizensRow.c);
-    const farmersRow = await db.prepare("SELECT COUNT(*) as c FROM citizens_gov_db WHERE is_farmer = 1").get();
-    const farmers = Number(farmersRow.c);
-    const totalVendorsGovRow = await db.prepare("SELECT COUNT(*) as c FROM vendors_gov_db").get();
-    const totalVendorsGov = Number(totalVendorsGovRow.c);
-    const totalUsersRow = await db.prepare("SELECT COUNT(*) as c FROM users").get();
-    const totalUsers = Number(totalUsersRow.c);
-    const citizenUsersRow = await db.prepare("SELECT COUNT(*) as c FROM users WHERE role = 'citizen'").get();
-    const citizenUsers = Number(citizenUsersRow.c);
-    const vendorUsersRow = await db.prepare("SELECT COUNT(*) as c FROM users WHERE role = 'vendor'").get();
-    const vendorUsers = Number(vendorUsersRow.c);
-    const pendingAppsRow = await db.prepare("SELECT COUNT(*) as c FROM citizen_applications WHERE status = 'Pending'").get();
-    const pendingApps = Number(pendingAppsRow.c);
-    const approvedAppsRow = await db.prepare("SELECT COUNT(*) as c FROM citizen_applications WHERE status = 'Approved'").get();
-    const approvedApps = Number(approvedAppsRow.c);
-    const schemes = await db.prepare("SELECT * FROM schemes").all();
-    const triggersRow = await db.prepare("SELECT COUNT(*) as c FROM event_triggers WHERE status = 'Scheduled'").get();
-    const triggers = Number(triggersRow.c);
+  const db = req.app.locals.db;
+  const totalCitizensRow = await db.prepare("SELECT COUNT(*) as c FROM citizens_gov_db").get();
+  const totalCitizens = Number(totalCitizensRow.c);
+  const farmersRow = await db.prepare("SELECT COUNT(*) as c FROM citizens_gov_db WHERE is_farmer = 1").get();
+  const farmers = Number(farmersRow.c);
+  const totalVendorsGovRow = await db.prepare("SELECT COUNT(*) as c FROM vendors_gov_db").get();
+  const totalVendorsGov = Number(totalVendorsGovRow.c);
+  const totalUsersRow = await db.prepare("SELECT COUNT(*) as c FROM users").get();
+  const totalUsers = Number(totalUsersRow.c);
+  const citizenUsersRow = await db.prepare("SELECT COUNT(*) as c FROM users WHERE role = 'citizen'").get();
+  const citizenUsers = Number(citizenUsersRow.c);
+  const vendorUsersRow = await db.prepare("SELECT COUNT(*) as c FROM users WHERE role = 'vendor'").get();
+  const vendorUsers = Number(vendorUsersRow.c);
+  const pendingAppsRow = await db.prepare("SELECT COUNT(*) as c FROM citizen_applications WHERE status = 'Pending'").get();
+  const pendingApps = Number(pendingAppsRow.c);
+  const approvedAppsRow = await db.prepare("SELECT COUNT(*) as c FROM citizen_applications WHERE status = 'Approved'").get();
+  const approvedApps = Number(approvedAppsRow.c);
+  const schemes = await db.prepare("SELECT * FROM schemes").all();
+  const triggersRow = await db.prepare("SELECT COUNT(*) as c FROM event_triggers WHERE status = 'Scheduled'").get();
+  const triggers = Number(triggersRow.c);
 
-    // Beneficiary counts per scheme
-    const beneficiaryCounts = await db.prepare(`
-        SELECT scheme_id, COUNT(*) as count FROM citizen_applications 
-        WHERE status IN ('Approved', 'Funded') GROUP BY scheme_id
-    `).all();
-    const beneficiaryMap = {};
-    for (const b of beneficiaryCounts) beneficiaryMap[b.scheme_id] = Number(b.count);
-    const schemesWithBeneficiaries = schemes.map(s => ({ ...s, beneficiary_count: beneficiaryMap[s.id] || 0 }));
+  // Beneficiary counts per scheme
+  const beneficiaryCounts = await db.prepare(`
+    SELECT scheme_id, COUNT(*) as count FROM citizen_applications 
+    WHERE status IN ('Approved', 'Funded') GROUP BY scheme_id
+  `).all();
+  const beneficiaryMap = {};
+  for (const b of beneficiaryCounts) beneficiaryMap[b.scheme_id] = Number(b.count);
+  const schemesWithBeneficiaries = schemes.map(s => ({ ...s, beneficiary_count: beneficiaryMap[s.id] || 0 }));
 
-    res.json({ stats: {
-        govDB: { totalCitizens, farmers, nonFarmers: totalCitizens - farmers, totalVendorsGov },
-        platform: { totalUsers, citizenUsers, vendorUsers },
-        applications: { pending: pendingApps, approved: approvedApps },
-        schemes: schemesWithBeneficiaries, scheduledTriggers: triggers
-    }});
+  res.json({ stats: {
+    govDB: { totalCitizens, farmers, nonFarmers: totalCitizens - farmers, totalVendorsGov },
+    platform: { totalUsers, citizenUsers, vendorUsers },
+    applications: { pending: pendingApps, approved: approvedApps },
+    schemes: schemesWithBeneficiaries, scheduledTriggers: triggers
+  }});
 });
 
-//vendor management endpoint (GET)
+// ==================== VENDOR MANAGEMENT (admin) ====================
 router.get("/vendors", requireRole("admin", "rbi_admin"), async (req, res) => {
-    const db = req.app.locals.db;
-    const vendors = await db.prepare("SELECT * FROM vendors_gov_db").all();
-    // Also get vendor applications
-    const applications = await db.prepare(`
-        SELECT va.*, u.name as user_name, u.phone as user_phone
-        FROM vendor_applications va
-        LEFT JOIN users u ON va.user_id = u.id
-        ORDER BY va.created_at DESC
-    `).all();
-    res.json({ vendors, applications, total: vendors.length });
-    });
+  const db = req.app.locals.db;
+  const vendors = await db.prepare("SELECT * FROM vendors_gov_db").all();
+  // Also get vendor applications
+  const applications = await db.prepare(`
+    SELECT va.*, u.name as user_name, u.phone as user_phone
+    FROM vendor_applications va
+    LEFT JOIN users u ON va.user_id = u.id
+    ORDER BY va.created_at DESC
+  `).all();
+  res.json({ vendors, applications, total: vendors.length });
+});
 
-    router.post("/vendors/:id/approve", requireRole("admin"), async (req, res) => {
-    const db = req.app.locals.db;
-    const app = await db.prepare("SELECT * FROM vendor_applications WHERE id = ?").get(req.params.id);
-    if (!app) return res.status(404).json({ error: "Vendor application not found" });
-    if (app.status !== "Pending") return res.status(400).json({ error: `Cannot approve — status is ${app.status}` });
+router.post("/vendors/:id/approve", requireRole("admin"), async (req, res) => {
+  const db = req.app.locals.db;
+  const app = await db.prepare("SELECT * FROM vendor_applications WHERE id = ?").get(req.params.id);
+  if (!app) return res.status(404).json({ error: "Vendor application not found" });
+  if (app.status !== "Pending") return res.status(400).json({ error: `Cannot approve — status is ${app.status}` });
 
-    await db.prepare("UPDATE vendor_applications SET status = 'Approved', reviewed_at = NOW() WHERE id = ?").run(req.params.id);
+  await db.prepare("UPDATE vendor_applications SET status = 'Approved', reviewed_at = NOW() WHERE id = ?").run(req.params.id);
 
-    const user = await db.prepare("SELECT phone, name, wallet_address FROM users WHERE id = ?").get(app.user_id);
+  const user = await db.prepare("SELECT phone, name, wallet_address FROM users WHERE id = ?").get(app.user_id);
 
-    if (user && user.wallet_address) {
-        try {
-        const { ethers } = require("ethers");
-        const { getDeployerSigner, getVendorRegistry, withTxLock } = require("../utils/contractSigner");
-
-        await withTxLock(async () => {
-            // 1. Fund vendor wallet with ETH for gas
-            const { signer: deployer } = getDeployerSigner();
-            const deployerBal = await deployer.provider.getBalance(await deployer.getAddress());
-            const fundAmount = ethers.parseEther("0.005");
-            if (deployerBal > fundAmount * 2n) {
-            const fundTx = await deployer.sendTransaction({ to: user.wallet_address, value: fundAmount });
-            await fundTx.wait();
-            console.log(`   ⛽ Funded vendor ${user.wallet_address.slice(0,10)}... with 0.005 ETH for gas`);
-            } else {
-            console.warn(`   ⚠️ Deployer balance too low for vendor funding (${ethers.formatEther(deployerBal)} ETH)`);
-            }
-
-            // 2. Check if wallet is ALREADY registered on-chain (prevent "Wallet already registered" revert)
-            const { contract: vendorReg } = getVendorRegistry();
-            const existingVendorId = await vendorReg.walletToVendorId(user.wallet_address);
-
-            if (Number(existingVendorId) !== 0) {
-            // Wallet already on-chain — save existing vendor ID, skip re-registration
-            console.log(`   ℹ️ Wallet ${user.wallet_address.slice(0,10)}... already on-chain as vendor #${Number(existingVendorId)}`);
-            await db.prepare("UPDATE vendor_applications SET on_chain_vendor_id = ? WHERE id = ?")
-                .run(Number(existingVendorId), req.params.id);
-            } else {
-            // 3. Register vendor on-chain (VendorRegistry.registerVendorByAdmin)
-            const { contract: vendorReg2 } = getVendorRegistry();
-            const vendorType = app.vendor_type === "CropBuyer" ? 1 : 0;
-            const credentialHash = ethers.keccak256(ethers.toUtf8Bytes(app.credential || "none"));
-            const bankAccountHash = ethers.keccak256(ethers.toUtf8Bytes(app.bank_account || "none"));
-            const ifscHash = ethers.keccak256(ethers.toUtf8Bytes(app.ifsc_code || "none"));
-
-            const regTx = await vendorReg2.registerVendorByAdmin(
-                user.wallet_address, vendorType, app.business_name, credentialHash, bankAccountHash, ifscHash
-            );
-            const receipt = await regTx.wait();
-
-            // Get the assigned on-chain vendor ID
-            const { contract: vendorReg3 } = getVendorRegistry();
-            const onChainVendorId = Number(await vendorReg3.walletToVendorId(user.wallet_address));
-            await db.prepare("UPDATE vendor_applications SET on_chain_vendor_id = ? WHERE id = ?")
-                .run(onChainVendorId, req.params.id);
-
-            console.log(`   🔗 Vendor "${app.business_name}" registered on-chain — ID: ${onChainVendorId}, TX: ${receipt.hash.slice(0,14)}...`);
-
-            // 4. Log to DB transaction log
-            await db.prepare("INSERT INTO transaction_log (tx_type, from_address, to_address, amount, description, tx_hash) VALUES (?, ?, ?, ?, ?, ?)")
-                .run("VendorExchange", "0x0000000000000000000000000000000000000000", user.wallet_address, 0,
-                `Vendor "${app.business_name}" registered on-chain (ID: ${onChainVendorId})`, receipt.hash);
-            }
-        });
-        } catch (e) {
-        console.warn(`   ⚠️ Vendor on-chain registration error: ${e.reason || e.message}`);
-        }
-    }
-
-    // Insert approved vendor into vendors_gov_db (government-approved vendor registry)
+  if (user && user.wallet_address) {
     try {
-        await db.prepare(`INSERT INTO vendors_gov_db (business_name, vendor_type, owner_name, degree, bank_account, ifsc_code, mobile, district)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-        .run(app.business_name, app.vendor_type || 'FarmingSupplier', user ? user.name : 'Unknown', app.credential || '', app.bank_account || '', app.ifsc_code || '', app.mobile || (user ? user.phone : ''), 'N/A');
-        console.log(`   📋 Vendor "${app.business_name}" added to vendors_gov_db`);
-    } catch (govDbErr) {
-        console.warn(`   ⚠️ Could not insert into vendors_gov_db: ${govDbErr.message}`);
-    }
+      const { ethers } = require("ethers");
+      const { getDeployerSigner, getVendorRegistry, withTxLock } = require("../utils/contractSigner");
 
-    if (user) {
-        await db.prepare("INSERT INTO notifications (user_id, type, recipient, message) VALUES (?, ?, ?, ?)")
-        .run(app.user_id, "sms", user.phone, `Dear ${user.name}, your vendor application for "${app.business_name}" has been APPROVED! Your wallet is ready.`);
-        console.log(`✅ [VENDOR APPROVED] ${app.business_name} (${user.name})`);
+      await withTxLock(async () => {
+        // 1. Fund vendor wallet with ETH for gas (conservative for testnet)
+        const { signer: deployer } = getDeployerSigner();
+        const deployerBal = await deployer.provider.getBalance(await deployer.getAddress());
+        const fundAmount = ethers.parseEther("0.005");
+        if (deployerBal > fundAmount * 2n) {
+          const fundTx = await deployer.sendTransaction({ to: user.wallet_address, value: fundAmount });
+          await fundTx.wait();
+          console.log(`   ⛽ Funded vendor ${user.wallet_address.slice(0,10)}... with 0.005 ETH for gas`);
+        } else {
+          console.warn(`   ⚠️ Deployer balance too low for vendor funding (${ethers.formatEther(deployerBal)} ETH)`);
+        }
+
+        // 2. Check if wallet is ALREADY registered on-chain (prevent "Wallet already registered" revert)
+        const { contract: vendorReg } = getVendorRegistry();
+        const existingVendorId = await vendorReg.walletToVendorId(user.wallet_address);
+
+        if (Number(existingVendorId) !== 0) {
+          // Wallet already on-chain — save existing vendor ID, skip re-registration
+          console.log(`   ℹ️ Wallet ${user.wallet_address.slice(0,10)}... already on-chain as vendor #${Number(existingVendorId)}`);
+          await db.prepare("UPDATE vendor_applications SET on_chain_vendor_id = ? WHERE id = ?")
+            .run(Number(existingVendorId), req.params.id);
+        } else {
+          // 3. Register vendor on-chain (VendorRegistry.registerVendorByAdmin)
+          const { contract: vendorReg2 } = getVendorRegistry();
+          const vendorType = app.vendor_type === "CropBuyer" ? 1 : 0;
+          const credentialHash = ethers.keccak256(ethers.toUtf8Bytes(app.credential || "none"));
+          const bankAccountHash = ethers.keccak256(ethers.toUtf8Bytes(app.bank_account || "none"));
+          const ifscHash = ethers.keccak256(ethers.toUtf8Bytes(app.ifsc_code || "none"));
+
+          const regTx = await vendorReg2.registerVendorByAdmin(
+            user.wallet_address, vendorType, app.business_name, credentialHash, bankAccountHash, ifscHash
+          );
+          const receipt = await regTx.wait();
+
+          // Get the assigned on-chain vendor ID
+          const { contract: vendorReg3 } = getVendorRegistry();
+          const onChainVendorId = Number(await vendorReg3.walletToVendorId(user.wallet_address));
+          await db.prepare("UPDATE vendor_applications SET on_chain_vendor_id = ? WHERE id = ?")
+            .run(onChainVendorId, req.params.id);
+
+          console.log(`   🔗 Vendor "${app.business_name}" registered on-chain — ID: ${onChainVendorId}, TX: ${receipt.hash.slice(0,14)}...`);
+
+          // 4. Log to DB transaction log
+          await db.prepare("INSERT INTO transaction_log (tx_type, from_address, to_address, amount, description, tx_hash) VALUES (?, ?, ?, ?, ?, ?)")
+            .run("VendorExchange", "0x0000000000000000000000000000000000000000", user.wallet_address, 0,
+              `Vendor "${app.business_name}" registered on-chain (ID: ${onChainVendorId})`, receipt.hash);
+        }
+      });
+    } catch (e) {
+      console.warn(`   ⚠️ Vendor on-chain registration error: ${e.reason || e.message}`);
     }
-    res.json({ success: true, message: "Vendor approved" });
+  }
+
+  // Insert approved vendor into vendors_gov_db (government-approved vendor registry)
+  try {
+    await db.prepare(`INSERT INTO vendors_gov_db (business_name, vendor_type, owner_name, degree, bank_account, ifsc_code, mobile, district)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(app.business_name, app.vendor_type || 'FarmingSupplier', user ? user.name : 'Unknown', app.credential || '', app.bank_account || '', app.ifsc_code || '', app.mobile || (user ? user.phone : ''), 'N/A');
+    console.log(`   📋 Vendor "${app.business_name}" added to vendors_gov_db`);
+  } catch (govDbErr) {
+    console.warn(`   ⚠️ Could not insert into vendors_gov_db: ${govDbErr.message}`);
+  }
+
+  if (user) {
+    await db.prepare("INSERT INTO notifications (user_id, type, recipient, message) VALUES (?, ?, ?, ?)")
+      .run(app.user_id, "sms", user.phone, `Dear ${user.name}, your vendor application for "${app.business_name}" has been APPROVED! Your wallet is ready.`);
+    console.log(`✅ [VENDOR APPROVED] ${app.business_name} (${user.name})`);
+  }
+  res.json({ success: true, message: "Vendor approved" });
 });
 
 router.post("/vendors/:id/reject", requireRole("admin"), async (req, res) => {
-    const db = req.app.locals.db;
-    const { reason } = req.body;
-    const app = await db.prepare("SELECT * FROM vendor_applications WHERE id = ?").get(req.params.id);
-    if (!app) return res.status(404).json({ error: "Vendor application not found" });
-    if (app.status !== "Pending") return res.status(400).json({ error: `Cannot reject — status is ${app.status}` });
+  const db = req.app.locals.db;
+  const { reason } = req.body;
+  const app = await db.prepare("SELECT * FROM vendor_applications WHERE id = ?").get(req.params.id);
+  if (!app) return res.status(404).json({ error: "Vendor application not found" });
+  if (app.status !== "Pending") return res.status(400).json({ error: `Cannot reject — status is ${app.status}` });
 
-    const rejectionReason = reason || "Application did not meet vendor criteria";
-    await db.prepare("UPDATE vendor_applications SET status = 'Rejected', rejection_reason = ?, reviewed_at = NOW() WHERE id = ?")
-        .run(rejectionReason, req.params.id);
+  const rejectionReason = reason || "Application did not meet vendor criteria";
+  await db.prepare("UPDATE vendor_applications SET status = 'Rejected', rejection_reason = ?, reviewed_at = NOW() WHERE id = ?")
+    .run(rejectionReason, req.params.id);
 
-    const user = await db.prepare("SELECT phone, name FROM users WHERE id = ?").get(app.user_id);
-    if (user) {
-        await db.prepare("INSERT INTO notifications (user_id, type, recipient, message) VALUES (?, ?, ?, ?)")
-        .run(app.user_id, "sms", user.phone, `Dear ${user.name}, your vendor application was REJECTED. Reason: ${rejectionReason}`);
-        console.log(`❌ [VENDOR REJECTED] ${app.business_name} — Reason: ${rejectionReason}`);
-    }
-    res.json({ success: true, message: "Vendor rejected", reason: rejectionReason });
-    });
-
-    router.post("/verify-itr/:vendorId", requireRole("admin", "rbi_admin"), async (req, res) => {
-    const db = req.app.locals.db;
-    const vendor = await db.prepare("SELECT * FROM vendors_gov_db WHERE id = ?").get(req.params.vendorId);
-    if (!vendor) return res.status(404).json({ error: "Vendor not found" });
-    console.log(`📋 [ITR VERIFIED] ${vendor.business_name} — Status: ${vendor.itr_status}`);
-    res.json({ verified: true, vendor: { id: vendor.id, businessName: vendor.business_name, itrStatus: vendor.itr_status } });
-    });
-
-    router.post("/confirm-transfer/:vendorId", requireRole("rbi_admin"), async (req, res) => {
-    const db = req.app.locals.db;
-    const { amount, transactionRef } = req.body;
-
-    // Look up vendor APPLICATION (not gov DB) — the frontend sends vendor_applications.id
-    const app = await db.prepare(`
-        SELECT va.*, u.wallet_address, u.wallet_private_key_enc, u.name as user_name, u.phone as user_phone
-        FROM vendor_applications va
-        JOIN users u ON va.user_id = u.id
-        WHERE va.id = ?
-    `).get(req.params.vendorId);
-
-    if (!app) return res.status(404).json({ error: "Vendor application not found" });
-    if (app.status !== "Approved") return res.status(400).json({ error: `Vendor status is "${app.status}", not Approved` });
-    if (!app.wallet_address) return res.status(400).json({ error: "Vendor has no wallet address" });
-
-    const transferAmount = parseFloat(amount) || 0;
-    if (transferAmount <= 0) return res.status(400).json({ error: "Transfer amount must be positive" });
-
-    console.log(`\n🏦 [RBI TRANSFER] ${app.business_name} — ₹${transferAmount} — Ref: ${transactionRef || "N/A"}`);
-    let tokensBurned = false;
-    let burnTxHash = null;
-    try {
-        const { ethers } = require("ethers");
-        const { getDigitalRupee, getVendorRegistry, getTransactionLedger, withTxLock } = require("../utils/contractSigner");
-
-        await withTxLock(async () => {
-        const amountWei = ethers.parseEther(String(transferAmount));
-
-        // Step 1: Check vendor's token balance
-        const { contract: dr1 } = getDigitalRupee(true);
-        const vendorBalance = await dr1.balanceOf(app.wallet_address);
-        const burnAmount = vendorBalance < amountWei ? vendorBalance : amountWei;
-
-        if (burnAmount > 0n) {
-            // Step 2: Burn (revoke) tokens from vendor's wallet
-            const { contract: dr2 } = getDigitalRupee(true);
-            const burnTx = await dr2.revokeTokens(app.wallet_address, burnAmount);
-            const burnReceipt = await burnTx.wait();
-            burnTxHash = burnReceipt.hash;
-            console.log(`   🔥 Burned ₹${ethers.formatEther(burnAmount)} tokens from ${app.wallet_address.slice(0,10)}...`);
-
-            // Step 3: Mark tokens revoked on VendorRegistry (if vendor is on-chain)
-            try {
-            const { contract: vendorReg } = getVendorRegistry();
-            const vendorData = await vendorReg.getVendorByWallet(app.wallet_address);
-            const onChainVendorId = Number(vendorData.id);
-            const exchangeStatus = Number(vendorData.exchangeStatus);
-
-            if (exchangeStatus === 0 || exchangeStatus === 4) {
-                console.log(`   ℹ️ VendorRegistry exchangeStatus=${exchangeStatus} (None/Revoked) — ERC-20 burn completed, skipping VendorRegistry state update`);
-            } else if (exchangeStatus === 1) {
-                const { contract: vr1 } = getVendorRegistry();
-                await (await vr1.verifyITR(onChainVendorId)).wait();
-                const { contract: vr2 } = getVendorRegistry();
-                await (await vr2.confirmRBITransfer(onChainVendorId)).wait();
-                const { contract: vr3 } = getVendorRegistry();
-                await (await vr3.markTokensRevoked(onChainVendorId, burnAmount)).wait();
-                console.log(`   ✅ VendorRegistry updated — tokens revoked for vendor #${onChainVendorId}`);
-            } else if (exchangeStatus === 2) {
-                const { contract: vr2 } = getVendorRegistry();
-                await (await vr2.confirmRBITransfer(onChainVendorId)).wait();
-                const { contract: vr3 } = getVendorRegistry();
-                await (await vr3.markTokensRevoked(onChainVendorId, burnAmount)).wait();
-                console.log(`   ✅ VendorRegistry updated — tokens revoked for vendor #${onChainVendorId}`);
-            } else if (exchangeStatus === 3) {
-                const { contract: vr3 } = getVendorRegistry();
-                await (await vr3.markTokensRevoked(onChainVendorId, burnAmount)).wait();
-                console.log(`   ✅ VendorRegistry updated — tokens revoked for vendor #${onChainVendorId}`);
-            }
-            } catch (vrErr) {
-            console.warn(`   ⚠️ VendorRegistry update skipped: ${vrErr.reason || vrErr.message}`);
-            }
-
-            // Step 4: Log to on-chain TransactionLedger
-            try {
-            const { contract: ledger } = getTransactionLedger();
-            await (await ledger.logTransaction(
-                4, // TokenRevocation
-                app.wallet_address,
-                "0x0000000000000000000000000000000000000000",
-                burnAmount,
-                `RBI transfer confirmed — ₹${transferAmount} revoked from "${app.business_name}"`
-            )).wait();
-            console.log(`   📒 Logged revocation to TransactionLedger`);
-            } catch (logErr) {
-            console.warn(`   ⚠️ TransactionLedger log skipped: ${logErr.reason || logErr.message}`);
-            }
-
-            tokensBurned = true;
-        } else {
-            console.log(`   ℹ️ Vendor has 0 token balance — no tokens to burn`);
-        }
-        });
-    } catch (chainErr) {
-        console.warn(`   ⚠️ On-chain token revocation error: ${chainErr.reason || chainErr.shortMessage || chainErr.message}`);
-    }
-
-    // Log to DB transaction_log
-    await db.prepare("INSERT INTO transaction_log (tx_type, from_address, to_address, amount, description, tx_hash) VALUES (?, ?, ?, ?, ?, ?)")
-        .run("TokenRevocation", app.wallet_address, "0x0000000000000000000000000000000000000000", transferAmount,
-        `RBI transfer ₹${transferAmount} to "${app.business_name}" — Ref: ${transactionRef || "N/A"}. Tokens ${tokensBurned ? "revoked" : "not revoked"}.`,
-        burnTxHash || null);
-
-    // Log notification
+  const user = await db.prepare("SELECT phone, name FROM users WHERE id = ?").get(app.user_id);
+  if (user) {
     await db.prepare("INSERT INTO notifications (user_id, type, recipient, message) VALUES (?, ?, ?, ?)")
-        .run(app.user_id, "system", app.user_phone,
-        `RBI transferred ₹${transferAmount} to your bank account for "${app.business_name}". ${tokensBurned ? 'Tokens revoked.' : ''} Ref: ${transactionRef || 'N/A'}`);
-
-    console.log(`   ✅ [RBI TRANSFER COMPLETE] ${app.business_name} — ₹${transferAmount} — Tokens ${tokensBurned ? 'REVOKED' : 'not revoked (0 balance or chain error)'}\n`);
-
-    res.json({
-        confirmed: true,
-        tokensBurned,
-        vendor: { id: app.id, businessName: app.business_name },
-        message: `Transfer confirmed for "${app.business_name}". ${tokensBurned ? 'Tokens revoked on-chain.' : 'No tokens to revoke.'}`
-    });
+      .run(app.user_id, "sms", user.phone, `Dear ${user.name}, your vendor application was REJECTED. Reason: ${rejectionReason}`);
+    console.log(`❌ [VENDOR REJECTED] ${app.business_name} — Reason: ${rejectionReason}`);
+  }
+  res.json({ success: true, message: "Vendor rejected", reason: rejectionReason });
 });
 
+router.post("/verify-itr/:vendorId", requireRole("admin", "rbi_admin"), async (req, res) => {
+  const db = req.app.locals.db;
+  const vendor = await db.prepare("SELECT * FROM vendors_gov_db WHERE id = ?").get(req.params.vendorId);
+  if (!vendor) return res.status(404).json({ error: "Vendor not found" });
+  console.log(`📋 [ITR VERIFIED] ${vendor.business_name} — Status: ${vendor.itr_status}`);
+  res.json({ verified: true, vendor: { id: vendor.id, businessName: vendor.business_name, itrStatus: vendor.itr_status } });
+});
+
+router.post("/confirm-transfer/:vendorId", requireRole("rbi_admin"), async (req, res) => {
+  const db = req.app.locals.db;
+  const { amount, transactionRef } = req.body;
+
+  // Look up vendor APPLICATION (not gov DB) — the frontend sends vendor_applications.id
+  const app = await db.prepare(`
+    SELECT va.*, u.wallet_address, u.wallet_private_key_enc, u.name as user_name, u.phone as user_phone
+    FROM vendor_applications va
+    JOIN users u ON va.user_id = u.id
+    WHERE va.id = ?
+  `).get(req.params.vendorId);
+
+  if (!app) return res.status(404).json({ error: "Vendor application not found" });
+  if (app.status !== "Approved") return res.status(400).json({ error: `Vendor status is "${app.status}", not Approved` });
+  if (!app.wallet_address) return res.status(400).json({ error: "Vendor has no wallet address" });
+
+  const transferAmount = parseFloat(amount) || 0;
+  if (transferAmount <= 0) return res.status(400).json({ error: "Transfer amount must be positive" });
+
+  console.log(`\n🏦 [RBI TRANSFER] ${app.business_name} — ₹${transferAmount} — Ref: ${transactionRef || "N/A"}`);
+
+  // ===== REVOKE (BURN) TOKENS ON-CHAIN =====
+  let tokensBurned = false;
+  let burnTxHash = null;
+  try {
+    const { ethers } = require("ethers");
+    const { getDigitalRupee, getVendorRegistry, getTransactionLedger, withTxLock } = require("../utils/contractSigner");
+
+    await withTxLock(async () => {
+      const amountWei = ethers.parseEther(String(transferAmount));
+
+      // Step 1: Check vendor's token balance
+      const { contract: dr1 } = getDigitalRupee(true);
+      const vendorBalance = await dr1.balanceOf(app.wallet_address);
+      const burnAmount = vendorBalance < amountWei ? vendorBalance : amountWei;
+
+      if (burnAmount > 0n) {
+        // Step 2: Burn (revoke) tokens from vendor's wallet
+        const { contract: dr2 } = getDigitalRupee(true);
+        const burnTx = await dr2.revokeTokens(app.wallet_address, burnAmount);
+        const burnReceipt = await burnTx.wait();
+        burnTxHash = burnReceipt.hash;
+        console.log(`   🔥 Burned ₹${ethers.formatEther(burnAmount)} tokens from ${app.wallet_address.slice(0,10)}...`);
+
+        // Step 3: Mark tokens revoked on VendorRegistry (if vendor is on-chain)
+        try {
+          const { contract: vendorReg } = getVendorRegistry();
+          const vendorData = await vendorReg.getVendorByWallet(app.wallet_address);
+          const onChainVendorId = Number(vendorData.id);
+          const exchangeStatus = Number(vendorData.exchangeStatus);
+
+          if (exchangeStatus === 0 || exchangeStatus === 4) {
+            console.log(`   ℹ️ VendorRegistry exchangeStatus=${exchangeStatus} (None/Revoked) — ERC-20 burn completed, skipping VendorRegistry state update`);
+          } else if (exchangeStatus === 1) {
+            const { contract: vr1 } = getVendorRegistry();
+            await (await vr1.verifyITR(onChainVendorId)).wait();
+            const { contract: vr2 } = getVendorRegistry();
+            await (await vr2.confirmRBITransfer(onChainVendorId)).wait();
+            const { contract: vr3 } = getVendorRegistry();
+            await (await vr3.markTokensRevoked(onChainVendorId, burnAmount)).wait();
+            console.log(`   ✅ VendorRegistry updated — tokens revoked for vendor #${onChainVendorId}`);
+          } else if (exchangeStatus === 2) {
+            const { contract: vr2 } = getVendorRegistry();
+            await (await vr2.confirmRBITransfer(onChainVendorId)).wait();
+            const { contract: vr3 } = getVendorRegistry();
+            await (await vr3.markTokensRevoked(onChainVendorId, burnAmount)).wait();
+            console.log(`   ✅ VendorRegistry updated — tokens revoked for vendor #${onChainVendorId}`);
+          } else if (exchangeStatus === 3) {
+            const { contract: vr3 } = getVendorRegistry();
+            await (await vr3.markTokensRevoked(onChainVendorId, burnAmount)).wait();
+            console.log(`   ✅ VendorRegistry updated — tokens revoked for vendor #${onChainVendorId}`);
+          }
+        } catch (vrErr) {
+          console.warn(`   ⚠️ VendorRegistry update skipped: ${vrErr.reason || vrErr.message}`);
+        }
+
+        // Step 4: Log to on-chain TransactionLedger
+        try {
+          const { contract: ledger } = getTransactionLedger();
+          await (await ledger.logTransaction(
+            4, // TokenRevocation
+            app.wallet_address,
+            "0x0000000000000000000000000000000000000000",
+            burnAmount,
+            `RBI transfer confirmed — ₹${transferAmount} revoked from "${app.business_name}"`
+          )).wait();
+          console.log(`   📒 Logged revocation to TransactionLedger`);
+        } catch (logErr) {
+          console.warn(`   ⚠️ TransactionLedger log skipped: ${logErr.reason || logErr.message}`);
+        }
+
+        tokensBurned = true;
+      } else {
+        console.log(`   ℹ️ Vendor has 0 token balance — no tokens to burn`);
+      }
+    });
+  } catch (chainErr) {
+    console.warn(`   ⚠️ On-chain token revocation error: ${chainErr.reason || chainErr.shortMessage || chainErr.message}`);
+  }
+
+  // Log to DB transaction_log
+  await db.prepare("INSERT INTO transaction_log (tx_type, from_address, to_address, amount, description, tx_hash) VALUES (?, ?, ?, ?, ?, ?)")
+    .run("TokenRevocation", app.wallet_address, "0x0000000000000000000000000000000000000000", transferAmount,
+      `RBI transfer ₹${transferAmount} to "${app.business_name}" — Ref: ${transactionRef || "N/A"}. Tokens ${tokensBurned ? "revoked" : "not revoked"}.`,
+      burnTxHash || null);
+
+  // Log notification
+  await db.prepare("INSERT INTO notifications (user_id, type, recipient, message) VALUES (?, ?, ?, ?)")
+    .run(app.user_id, "system", app.user_phone,
+      `RBI transferred ₹${transferAmount} to your bank account for "${app.business_name}". ${tokensBurned ? 'Tokens revoked.' : ''} Ref: ${transactionRef || 'N/A'}`);
+
+  console.log(`   ✅ [RBI TRANSFER COMPLETE] ${app.business_name} — ₹${transferAmount} — Tokens ${tokensBurned ? 'REVOKED' : 'not revoked (0 balance or chain error)'}\n`);
+
+  res.json({
+    confirmed: true,
+    tokensBurned,
+    vendor: { id: app.id, businessName: app.business_name },
+    message: `Transfer confirmed for "${app.business_name}". ${tokensBurned ? 'Tokens revoked on-chain.' : 'No tokens to revoke.'}`
+  });
+});
+
+// ==================== CITIZEN APPLICATION MANAGEMENT (admin) ====================
 router.get("/citizens", requireRole("admin", "rbi_admin"), async (req, res) => {
-    const db = req.app.locals.db;
-    const applications = await db.prepare(`
-        SELECT ca.*, u.name as user_name, u.phone as user_phone, s.name as scheme_name
-        FROM citizen_applications ca
-        LEFT JOIN users u ON ca.user_id = u.id
-        LEFT JOIN schemes s ON ca.scheme_id = s.id
-        ORDER BY ca.applied_at DESC
-    `).all();
-    res.json({ applications, total: applications.length });
+  const db = req.app.locals.db;
+  const applications = await db.prepare(`
+    SELECT ca.*, u.name as user_name, u.phone as user_phone, s.name as scheme_name
+    FROM citizen_applications ca
+    LEFT JOIN users u ON ca.user_id = u.id
+    LEFT JOIN schemes s ON ca.scheme_id = s.id
+    ORDER BY ca.applied_at DESC
+  `).all();
+  res.json({ applications, total: applications.length });
 });
 
 router.post("/citizens/:id/approve", requireRole("admin"), async (req, res) => {
-    const db = req.app.locals.db;
-    const app = await db.prepare("SELECT * FROM citizen_applications WHERE id = ?").get(req.params.id);
-    if (!app) return res.status(404).json({ error: "Application not found" });
-    if (app.status !== "Pending") return res.status(400).json({ error: `Cannot approve — status is ${app.status}` });
+  const db = req.app.locals.db;
+  const app = await db.prepare("SELECT * FROM citizen_applications WHERE id = ?").get(req.params.id);
+  if (!app) return res.status(404).json({ error: "Application not found" });
+  if (app.status !== "Pending") return res.status(400).json({ error: `Cannot approve — status is ${app.status}` });
 
-    await db.prepare("UPDATE citizen_applications SET status = 'Approved', reviewed_at = NOW() WHERE id = ?").run(req.params.id);
+  await db.prepare("UPDATE citizen_applications SET status = 'Approved', reviewed_at = NOW() WHERE id = ?").run(req.params.id);
 
-    // Send approval notification
-    const user = await db.prepare("SELECT phone, name FROM users WHERE id = ?").get(app.user_id);
-    if (user) {
-        await db.prepare("INSERT INTO notifications (user_id, type, recipient, message) VALUES (?, ?, ?, ?)")
-        .run(app.user_id, "sms", user.phone, `Dear ${user.name}, your welfare application has been APPROVED! You will receive tokens soon.`);
-        console.log(`✅ [APPROVED] Citizen ${user.name} (${user.phone}) — Application #${req.params.id}`);
-    }
+  // Send approval notification
+  const user = await db.prepare("SELECT phone, name FROM users WHERE id = ?").get(app.user_id);
+  if (user) {
+    await db.prepare("INSERT INTO notifications (user_id, type, recipient, message) VALUES (?, ?, ?, ?)")
+      .run(app.user_id, "sms", user.phone, `Dear ${user.name}, your welfare application has been APPROVED! You will receive tokens soon.`);
+    console.log(`✅ [APPROVED] Citizen ${user.name} (${user.phone}) — Application #${req.params.id}`);
+  }
 
-    res.json({ success: true, message: "Application approved" });
+  res.json({ success: true, message: "Application approved" });
 });
 
 router.post("/citizens/:id/reject", requireRole("admin"), async (req, res) => {
-    const db = req.app.locals.db;
-    const { reason } = req.body;
-    const app = await db.prepare("SELECT * FROM citizen_applications WHERE id = ?").get(req.params.id);
-    if (!app) return res.status(404).json({ error: "Application not found" });
-    if (app.status !== "Pending") return res.status(400).json({ error: `Cannot reject — status is ${app.status}` });
+  const db = req.app.locals.db;
+  const { reason } = req.body;
+  const app = await db.prepare("SELECT * FROM citizen_applications WHERE id = ?").get(req.params.id);
+  if (!app) return res.status(404).json({ error: "Application not found" });
+  if (app.status !== "Pending") return res.status(400).json({ error: `Cannot reject — status is ${app.status}` });
 
-    const rejectionReason = reason || "Application did not meet eligibility criteria";
-    await db.prepare("UPDATE citizen_applications SET status = 'Rejected', rejection_reason = ?, reviewed_at = NOW() WHERE id = ?")
-        .run(rejectionReason, req.params.id);
+  const rejectionReason = reason || "Application did not meet eligibility criteria";
+  await db.prepare("UPDATE citizen_applications SET status = 'Rejected', rejection_reason = ?, reviewed_at = NOW() WHERE id = ?")
+    .run(rejectionReason, req.params.id);
 
-    // Send rejection notification
-    const user = await db.prepare("SELECT phone, name FROM users WHERE id = ?").get(app.user_id);
-    if (user) {
-        await db.prepare("INSERT INTO notifications (user_id, type, recipient, message) VALUES (?, ?, ?, ?)")
-        .run(app.user_id, "sms", user.phone, `Dear ${user.name}, your welfare application has been REJECTED. Reason: ${rejectionReason}`);
-        console.log(`❌ [REJECTED] Citizen ${user.name} (${user.phone}) — Reason: ${rejectionReason}`);
-    }
+  // Send rejection notification
+  const user = await db.prepare("SELECT phone, name FROM users WHERE id = ?").get(app.user_id);
+  if (user) {
+    await db.prepare("INSERT INTO notifications (user_id, type, recipient, message) VALUES (?, ?, ?, ?)")
+      .run(app.user_id, "sms", user.phone, `Dear ${user.name}, your welfare application has been REJECTED. Reason: ${rejectionReason}`);
+    console.log(`❌ [REJECTED] Citizen ${user.name} (${user.phone}) — Reason: ${rejectionReason}`);
+  }
 
-    res.json({ success: true, message: "Application rejected", reason: rejectionReason });
+  res.json({ success: true, message: "Application rejected", reason: rejectionReason });
 });
 
-//scheme endpoints
+// ==================== SCHEME MANAGEMENT (admin) ====================
 router.get("/schemes", requireRole("admin", "rbi_admin"), async (req, res) => {
-    const db = req.app.locals.db;
-    const schemes = await db.prepare("SELECT * FROM schemes ORDER BY created_at DESC").all();
-    res.json({ schemes });
+  const db = req.app.locals.db;
+  const schemes = await db.prepare("SELECT * FROM schemes ORDER BY created_at DESC").all();
+  res.json({ schemes });
 });
 
 router.post("/schemes", requireRole("admin"), async (req, res) => {
-    const db = req.app.locals.db;
-    const { name, description, totalFund, perCitizenAmount, instalmentCount, instalmentAmount, targetOccupation } = req.body;
+  const db = req.app.locals.db;
+  const { name, description, totalFund, perCitizenAmount, instalmentCount, instalmentAmount, targetOccupation } = req.body;
 
-    if (!name || !totalFund || !perCitizenAmount) {
-        return res.status(400).json({ error: "Name, total fund, and per-citizen amount are required" });
-    }
+  if (!name || !totalFund || !perCitizenAmount) {
+    return res.status(400).json({ error: "Name, total fund, and per-citizen amount are required" });
+  }
 
-    const result = await db.prepare(`
-        INSERT INTO schemes (name, description, total_fund, per_citizen_amount, instalment_count, instalment_amount, target_occupation, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(name, description || "", totalFund, perCitizenAmount, instalmentCount || 1, instalmentAmount || perCitizenAmount, targetOccupation || "Farmer", req.body.status || "Active");
+  const result = await db.prepare(`
+    INSERT INTO schemes (name, description, total_fund, per_citizen_amount, instalment_count, instalment_amount, target_occupation, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(name, description || "", totalFund, perCitizenAmount, instalmentCount || 1, instalmentAmount || perCitizenAmount, targetOccupation || "Farmer", req.body.status || "Active");
 
-    console.log(`📋 [NEW SCHEME] ${name} — ₹${totalFund.toLocaleString()} — Status: ${req.body.status || 'Active'}`);
-    res.status(201).json({ success: true, schemeId: result.lastInsertRowid, message: "Scheme created" });
+  console.log(`📋 [NEW SCHEME] ${name} — ₹${totalFund.toLocaleString()} — Status: ${req.body.status || 'Active'}`);
+  res.status(201).json({ success: true, schemeId: result.lastInsertRowid, message: "Scheme created" });
 });
 
 router.delete("/schemes/:id", requireRole("admin"), async (req, res) => {
-    const db = req.app.locals.db;
-    const scheme = await db.prepare("SELECT * FROM schemes WHERE id = ?").get(req.params.id);
-    if (!scheme) return res.status(404).json({ error: "Scheme not found" });
+  const db = req.app.locals.db;
+  const scheme = await db.prepare("SELECT * FROM schemes WHERE id = ?").get(req.params.id);
+  if (!scheme) return res.status(404).json({ error: "Scheme not found" });
 
-    // Check if scheme has applications
-    const appCountRow = await db.prepare("SELECT COUNT(*) as c FROM citizen_applications WHERE scheme_id = ?").get(req.params.id);
-    const appCount = Number(appCountRow.c);
-    if (appCount > 0) {
-        return res.status(400).json({ error: `Cannot delete scheme with ${appCount} application(s). Mark as Completed instead.` });
-    }
+  // Check if scheme has applications
+  const appCountRow = await db.prepare("SELECT COUNT(*) as c FROM citizen_applications WHERE scheme_id = ?").get(req.params.id);
+  const appCount = Number(appCountRow.c);
+  if (appCount > 0) {
+    return res.status(400).json({ error: `Cannot delete scheme with ${appCount} application(s). Mark as Completed instead.` });
+  }
 
-    await db.prepare("DELETE FROM event_triggers WHERE scheme_id = ?").run(req.params.id);
-    await db.prepare("DELETE FROM schemes WHERE id = ?").run(req.params.id);
-    console.log(`🗑️ [SCHEME DELETED] ${scheme.name}`);
-    res.json({ success: true, message: `Scheme "${scheme.name}" deleted` });
+  await db.prepare("DELETE FROM event_triggers WHERE scheme_id = ?").run(req.params.id);
+  await db.prepare("DELETE FROM schemes WHERE id = ?").run(req.params.id);
+  console.log(`🗑️ [SCHEME DELETED] ${scheme.name}`);
+  res.json({ success: true, message: `Scheme "${scheme.name}" deleted` });
 });
 
 router.put("/schemes/:id/status", requireRole("admin"), async (req, res) => {
-    const db = req.app.locals.db;
-    const { status } = req.body;
-    if (!['Upcoming', 'Active', 'Completed'].includes(status)) {
-        return res.status(400).json({ error: "Status must be Upcoming, Active, or Completed" });
-    }
-    const scheme = await db.prepare("SELECT * FROM schemes WHERE id = ?").get(req.params.id);
-    if (!scheme) return res.status(404).json({ error: "Scheme not found" });
-    await db.prepare("UPDATE schemes SET status = ? WHERE id = ?").run(status, req.params.id);
-    res.json({ success: true, message: `Scheme status updated to ${status}` });
+  const db = req.app.locals.db;
+  const { status } = req.body;
+  if (!['Upcoming', 'Active', 'Completed'].includes(status)) {
+    return res.status(400).json({ error: "Status must be Upcoming, Active, or Completed" });
+  }
+  const scheme = await db.prepare("SELECT * FROM schemes WHERE id = ?").get(req.params.id);
+  if (!scheme) return res.status(404).json({ error: "Scheme not found" });
+  await db.prepare("UPDATE schemes SET status = ? WHERE id = ?").run(status, req.params.id);
+  res.json({ success: true, message: `Scheme status updated to ${status}` });
 });
 
-//event triggers
+// ==================== EVENT TRIGGERS (rbi_admin only) ====================
 router.get("/event-triggers", requireRole("rbi_admin", "admin"), async (req, res) => {
-    const db = req.app.locals.db;
-    const triggers = await db.prepare(`
-        SELECT et.*, s.name as scheme_name
-        FROM event_triggers et
-        LEFT JOIN schemes s ON et.scheme_id = s.id
-        ORDER BY et.scheduled_date ASC, et.scheduled_time ASC
-    `).all();
-    res.json({ triggers });
+  const db = req.app.locals.db;
+  const triggers = await db.prepare(`
+    SELECT et.*, s.name as scheme_name
+    FROM event_triggers et
+    LEFT JOIN schemes s ON et.scheme_id = s.id
+    ORDER BY et.scheduled_date ASC, et.scheduled_time ASC
+  `).all();
+  res.json({ triggers });
 });
 
 router.post("/event-triggers", requireRole("rbi_admin"), async (req, res) => {
-    const db = req.app.locals.db;
-    const { schemeId, scheduledDate, scheduledTime } = req.body;
+  const db = req.app.locals.db;
+  const { schemeId, scheduledDate, scheduledTime } = req.body;
 
-    if (!schemeId || !scheduledDate || !scheduledTime) {
-        return res.status(400).json({ error: "Scheme ID, date, and time are required" });
-    }
+  if (!schemeId || !scheduledDate || !scheduledTime) {
+    return res.status(400).json({ error: "Scheme ID, date, and time are required" });
+  }
 
-    const scheme = await db.prepare("SELECT * FROM schemes WHERE id = ?").get(schemeId);
-    if (!scheme) return res.status(404).json({ error: "Scheme not found" });
+  const scheme = await db.prepare("SELECT * FROM schemes WHERE id = ?").get(schemeId);
+  if (!scheme) return res.status(404).json({ error: "Scheme not found" });
 
-    // Check for existing active trigger for this scheme
-    const existing = await db.prepare("SELECT id FROM event_triggers WHERE scheme_id = ? AND status = 'Scheduled'").get(schemeId);
-    if (existing) return res.status(409).json({ error: "A distribution trigger is already scheduled for this scheme" });
+  // Check for existing active trigger for this scheme
+  const existing = await db.prepare("SELECT id FROM event_triggers WHERE scheme_id = ? AND status = 'Scheduled'").get(schemeId);
+  if (existing) return res.status(409).json({ error: "A distribution trigger is already scheduled for this scheme" });
 
-    const result = await db.prepare(`
-        INSERT INTO event_triggers (scheme_id, instalment_number, scheduled_date, scheduled_time, created_by)
-        VALUES (?, 1, ?, ?, ?)
-    `).run(schemeId, scheduledDate, scheduledTime, req.user.userId);
+  const result = await db.prepare(`
+    INSERT INTO event_triggers (scheme_id, instalment_number, scheduled_date, scheduled_time, created_by)
+    VALUES (?, 1, ?, ?, ?)
+  `).run(schemeId, scheduledDate, scheduledTime, req.user.userId);
 
-    console.log(`⏰ [EVENT TRIGGER] Scheme #${schemeId} — Lump-sum ₹${scheme.per_citizen_amount} — ${scheduledDate} ${scheduledTime}`);
-    res.status(201).json({ success: true, triggerId: result.lastInsertRowid, message: "Distribution trigger scheduled" });
+  console.log(`⏰ [EVENT TRIGGER] Scheme #${schemeId} — Lump-sum ₹${scheme.per_citizen_amount} — ${scheduledDate} ${scheduledTime}`);
+  res.status(201).json({ success: true, triggerId: result.lastInsertRowid, message: "Distribution trigger scheduled" });
 });
 
 router.put("/event-triggers/:id", requireRole("rbi_admin"), async (req, res) => {
-    const db = req.app.locals.db;
-    const { scheduledDate, scheduledTime, resetToScheduled } = req.body;
-    const trigger = await db.prepare("SELECT * FROM event_triggers WHERE id = ?").get(req.params.id);
-    if (!trigger) return res.status(404).json({ error: "Trigger not found" });
+  const db = req.app.locals.db;
+  const { scheduledDate, scheduledTime, resetToScheduled } = req.body;
+  const trigger = await db.prepare("SELECT * FROM event_triggers WHERE id = ?").get(req.params.id);
+  if (!trigger) return res.status(404).json({ error: "Trigger not found" });
 
-    // Allow retry of Failed triggers
-    if (resetToScheduled && trigger.status === "Failed") {
-        await db.prepare("UPDATE event_triggers SET status = 'Scheduled', retry_count = 0, error_message = NULL WHERE id = ?")
-        .run(req.params.id);
-        return res.json({ success: true, message: "Trigger reset to Scheduled — will retry on next cycle" });
-    }
+  // Allow retry of Failed triggers
+  if (resetToScheduled && trigger.status === "Failed") {
+    await db.prepare("UPDATE event_triggers SET status = 'Scheduled', retry_count = 0, error_message = NULL WHERE id = ?")
+      .run(req.params.id);
+    return res.json({ success: true, message: "Trigger reset to Scheduled — will retry on next cycle" });
+  }
 
-    if (trigger.status !== "Scheduled") return res.status(400).json({ error: "Can only edit scheduled triggers" });
+  if (trigger.status !== "Scheduled") return res.status(400).json({ error: "Can only edit scheduled triggers" });
 
-    await db.prepare("UPDATE event_triggers SET scheduled_date = ?, scheduled_time = ? WHERE id = ?")
-        .run(scheduledDate || trigger.scheduled_date, scheduledTime || trigger.scheduled_time, req.params.id);
+  await db.prepare("UPDATE event_triggers SET scheduled_date = ?, scheduled_time = ? WHERE id = ?")
+    .run(scheduledDate || trigger.scheduled_date, scheduledTime || trigger.scheduled_time, req.params.id);
 
-    res.json({ success: true, message: "Trigger updated" });
+  res.json({ success: true, message: "Trigger updated" });
 });
 
+/**
+ * Manual trigger execution — fires distribution immediately.
+ */
 router.post("/event-triggers/:id/execute", requireRole("rbi_admin", "admin"), async (req, res) => {
-    const db = req.app.locals.db;
-    const trigger = await db.prepare(`
-        SELECT et.*, s.per_citizen_amount, s.name as scheme_name
-        FROM event_triggers et
-        LEFT JOIN schemes s ON et.scheme_id = s.id
-        WHERE et.id = ?
-    `).get(req.params.id);
+  const db = req.app.locals.db;
+  const trigger = await db.prepare(`
+    SELECT et.*, s.per_citizen_amount, s.name as scheme_name
+    FROM event_triggers et
+    LEFT JOIN schemes s ON et.scheme_id = s.id
+    WHERE et.id = ?
+  `).get(req.params.id);
 
-    if (!trigger) return res.status(404).json({ error: "Trigger not found" });
-    if (trigger.status === "Executed") return res.status(400).json({ error: "Trigger already executed" });
+  if (!trigger) return res.status(404).json({ error: "Trigger not found" });
+  if (trigger.status === "Executed") return res.status(400).json({ error: "Trigger already executed" });
 
-    try {
-        const { ethers } = require("ethers");
-        const { getTokenDistributor, getCitizenRegistry, getDeployerSigner, withTxLock } = require("../utils/contractSigner");
+  try {
+    const { ethers } = require("ethers");
+    const { getTokenDistributor, getCitizenRegistry, getDeployerSigner, withTxLock } = require("../utils/contractSigner");
 
-        const amountPerCitizen = trigger.per_citizen_amount || 6000;
-        const amountWei = ethers.parseEther(String(amountPerCitizen));
+    const amountPerCitizen = trigger.per_citizen_amount || 6000;
+    const amountWei = ethers.parseEther(String(amountPerCitizen));
 
-        console.log(`\n🚀 [MANUAL EXECUTE] Trigger #${trigger.id} — "${trigger.scheme_name}" — ₹${amountPerCitizen}`);
+    console.log(`\n🚀 [MANUAL EXECUTE] Trigger #${trigger.id} — "${trigger.scheme_name}" — ₹${amountPerCitizen}`);
 
-        await withTxLock(async () => {
-        // Step 0: Ensure approved citizens are on-chain
-        const unsynced = await db.prepare(`
-            SELECT ca.*, u.wallet_address
-            FROM citizen_applications ca
-            JOIN users u ON ca.user_id = u.id
-            WHERE ca.status = 'Approved' AND ca.scheme_id = ?
-            AND ca.on_chain_citizen_id IS NULL AND u.wallet_address IS NOT NULL
-        `).all(trigger.scheme_id);
+    await withTxLock(async () => {
+      // Step 0: Ensure approved citizens are on-chain
+      const unsynced = await db.prepare(`
+        SELECT ca.*, u.wallet_address
+        FROM citizen_applications ca
+        JOIN users u ON ca.user_id = u.id
+        WHERE ca.status = 'Approved' AND ca.scheme_id = ?
+          AND ca.on_chain_citizen_id IS NULL AND u.wallet_address IS NOT NULL
+      `).all(trigger.scheme_id);
 
-        if (unsynced.length > 0) {
-            console.log(`   🔗 Syncing ${unsynced.length} unregistered citizen(s) before distribution...`);
-            for (const c of unsynced) {
-            try {
-                const { contract: cr } = getCitizenRegistry();
-                const zkCommitment = ethers.keccak256(ethers.toUtf8Bytes(`${c.pan}:${c.phone}`));
-                const mobileHash = ethers.keccak256(ethers.toUtf8Bytes(c.phone));
-                const regTx = await cr.registerCitizenByAdmin(c.wallet_address, zkCommitment, mobileHash, c.scheme_id);
-                await regTx.wait();
+      if (unsynced.length > 0) {
+        console.log(`   🔗 Syncing ${unsynced.length} unregistered citizen(s) before distribution...`);
+        for (const c of unsynced) {
+          try {
+            const { contract: cr } = getCitizenRegistry();
+            const zkCommitment = ethers.keccak256(ethers.toUtf8Bytes(`${c.pan}:${c.phone}`));
+            const mobileHash = ethers.keccak256(ethers.toUtf8Bytes(c.phone));
+            const regTx = await cr.registerCitizenByAdmin(c.wallet_address, zkCommitment, mobileHash, c.scheme_id);
+            await regTx.wait();
 
-                const { contract: cr2 } = getCitizenRegistry();
-                const totalCitizens = await cr2.getTotalCitizens();
-                await db.prepare("UPDATE citizen_applications SET on_chain_citizen_id = ?, on_chain_tx_hash = 'manual-sync' WHERE id = ?")
-                .run(Number(totalCitizens), c.id);
-                console.log(`   ✅ ${c.citizen_name}: synced to chain (ID ${Number(totalCitizens)})`);
-            } catch (syncErr) {
-                console.warn(`   ⚠️ ${c.citizen_name}: ${syncErr.reason || syncErr.message}`);
-            }
-            }
+            const { contract: cr2 } = getCitizenRegistry();
+            const totalCitizens = await cr2.getTotalCitizens();
+            await db.prepare("UPDATE citizen_applications SET on_chain_citizen_id = ?, on_chain_tx_hash = 'manual-sync' WHERE id = ?")
+              .run(Number(totalCitizens), c.id);
+            console.log(`   ✅ ${c.citizen_name}: synced to chain (ID ${Number(totalCitizens)})`);
+          } catch (syncErr) {
+            console.warn(`   ⚠️ ${c.citizen_name}: ${syncErr.reason || syncErr.message}`);
+          }
         }
+      }
 
-        // Step 1: Configure distribution
-        const { contract: td1 } = getTokenDistributor();
-        const configTx = await td1.configureDistribution(trigger.scheme_id, amountWei);
-        await configTx.wait();
+      // Step 1: Configure distribution
+      const { contract: td1 } = getTokenDistributor();
+      const configTx = await td1.configureDistribution(trigger.scheme_id, amountWei);
+      await configTx.wait();
 
-        // Step 2: Distribute
-        const { contract: td2 } = getTokenDistributor();
-        const distTx = await td2.manualDistribute();
-        const receipt = await distTx.wait();
+      // Step 2: Distribute
+      const { contract: td2 } = getTokenDistributor();
+      const distTx = await td2.manualDistribute();
+      const receipt = await distTx.wait();
 
-        // Step 3: Mark trigger executed
-        await db.prepare("UPDATE event_triggers SET status = 'Executed', executed_at = NOW(), error_message = NULL WHERE id = ?")
-            .run(trigger.id);
+      // Step 3: Mark trigger executed
+      await db.prepare("UPDATE event_triggers SET status = 'Executed', executed_at = NOW(), error_message = NULL WHERE id = ?")
+        .run(trigger.id);
 
-        // Step 4: Mark on-chain citizens as Funded
-        const fundedCount = await db.prepare(`
-            UPDATE citizen_applications SET status = 'Funded'
-            WHERE scheme_id = ? AND status = 'Approved' AND on_chain_citizen_id IS NOT NULL
-        `).run(trigger.scheme_id);
+      // Step 4: Mark on-chain citizens as Funded
+      const fundedCount = await db.prepare(`
+        UPDATE citizen_applications SET status = 'Funded'
+        WHERE scheme_id = ? AND status = 'Approved' AND on_chain_citizen_id IS NOT NULL
+      `).run(trigger.scheme_id);
 
-        // Step 5: Notify
-        const fundedApps = await db.prepare("SELECT user_id, citizen_name, phone FROM citizen_applications WHERE scheme_id = ? AND status = 'Funded'")
-            .all(trigger.scheme_id);
-        for (const a of fundedApps) {
-            await db.prepare("INSERT INTO notifications (user_id, type, recipient, message) VALUES (?, ?, ?, ?)")
-            .run(a.user_id, "sms", a.phone,
-                `Dear ${a.citizen_name}, ₹${amountPerCitizen} Digital Rupees have been deposited to your wallet for "${trigger.scheme_name}".`);
-        }
+      // Step 5: Notify
+      const fundedApps = await db.prepare("SELECT user_id, citizen_name, phone FROM citizen_applications WHERE scheme_id = ? AND status = 'Funded'")
+        .all(trigger.scheme_id);
+      for (const a of fundedApps) {
+        await db.prepare("INSERT INTO notifications (user_id, type, recipient, message) VALUES (?, ?, ?, ?)")
+          .run(a.user_id, "sms", a.phone,
+            `Dear ${a.citizen_name}, ₹${amountPerCitizen} Digital Rupees have been deposited to your wallet for "${trigger.scheme_name}".`);
+      }
 
-        console.log(`   ✅ [EXECUTED] TX: ${receipt.hash.slice(0,14)}... — ${fundedCount.changes} citizen(s) funded\n`);
-        });
+      console.log(`   ✅ [EXECUTED] TX: ${receipt.hash.slice(0,14)}... — ${fundedCount.changes} citizen(s) funded\n`);
+    });
 
-        res.json({ success: true, message: `Trigger #${trigger.id} executed — tokens distributed` });
-    } catch (err) {
-        const errMsg = err.reason || err.shortMessage || err.message;
-        console.error(`   ❌ [MANUAL EXECUTE ERROR] Trigger #${trigger.id}: ${errMsg}`);
-        await db.prepare("UPDATE event_triggers SET error_message = ? WHERE id = ?").run(errMsg, trigger.id);
-        res.status(500).json({ error: `Distribution failed: ${errMsg}` });
-    }
+    res.json({ success: true, message: `Trigger #${trigger.id} executed — tokens distributed` });
+  } catch (err) {
+    const errMsg = err.reason || err.shortMessage || err.message;
+    console.error(`   ❌ [MANUAL EXECUTE ERROR] Trigger #${trigger.id}: ${errMsg}`);
+    await db.prepare("UPDATE event_triggers SET error_message = ? WHERE id = ?").run(errMsg, trigger.id);
+    res.status(500).json({ error: `Distribution failed: ${errMsg}` });
+  }
 });
 
-//user management endpoint
+// ==================== USER MANAGEMENT ====================
 router.get("/users", requireRole("admin"), async (req, res) => {
-    const db = req.app.locals.db;
-    const users = await db.prepare("SELECT id, phone, email, name, role, wallet_address, created_at FROM users").all();
-    res.json({ users, total: users.length });
+  const db = req.app.locals.db;
+  const users = await db.prepare("SELECT id, phone, email, name, role, wallet_address, created_at FROM users").all();
+  res.json({ users, total: users.length });
 });
 
-//notification enpoint
+// ==================== NOTIFICATIONS ====================
 router.get("/notifications/:userId", requireRole("admin", "rbi_admin"), async (req, res) => {
-    const db = req.app.locals.db;
-    const notifications = await db.prepare("SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC").all(req.params.userId);
-    res.json({ notifications });
+  const db = req.app.locals.db;
+  const notifications = await db.prepare("SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC").all(req.params.userId);
+  res.json({ notifications });
 });
 
-//recent activities endpoint every transaction using gas
-router.get("/recent-activities", requireRole("admin", "rbi-admin"), async (req, res) => {
-    const db = req.app.locals.db;
-    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+// ==================== RECENT ACTIVITIES ====================
+router.get("/recent-activities", requireRole("admin", "rbi_admin"), async (req, res) => {
+  const db = req.app.locals.db;
+  const limit = Math.min(parseInt(req.query.limit) || 50, 200);
 
-    // Combine transaction_log + event_triggers into a unified activity feed
-    const transactions = await db.prepare(`
-        SELECT 'transaction' as source, tx_type as type, description as title, 
-            amount, from_address, to_address, tx_hash, created_at
-        FROM transaction_log ORDER BY created_at DESC LIMIT ?
-    `).all(limit);
+  // Combine transaction_log + event_triggers into a unified activity feed
+  const transactions = await db.prepare(`
+    SELECT 'transaction' as source, tx_type as type, description as title, 
+           amount, from_address, to_address, tx_hash, created_at
+    FROM transaction_log ORDER BY created_at DESC LIMIT ?
+  `).all(limit);
 
-    const triggers = await db.prepare(`
-        SELECT 'trigger' as source, 
-            CASE WHEN et.status = 'Executed' THEN 'instalment' ELSE 'trigger_' || LOWER(et.status) END as type,
-            s.name || ' - Instalment #' || et.instalment_number as title,
-            s.per_citizen_amount as amount,
-            NULL as from_address, NULL as to_address, NULL as tx_hash,
-            COALESCE(et.executed_at, et.created_at) as created_at
-        FROM event_triggers et LEFT JOIN schemes s ON et.scheme_id = s.id
-        ORDER BY created_at DESC LIMIT ?
-    `).all(limit);
+  const triggers = await db.prepare(`
+    SELECT 'trigger' as source, 
+           CASE WHEN et.status = 'Executed' THEN 'instalment' ELSE 'trigger_' || LOWER(et.status) END as type,
+           s.name || ' - Instalment #' || et.instalment_number as title,
+           s.per_citizen_amount as amount,
+           NULL as from_address, NULL as to_address, NULL as tx_hash,
+           COALESCE(et.executed_at, et.created_at) as created_at
+    FROM event_triggers et LEFT JOIN schemes s ON et.scheme_id = s.id
+    ORDER BY created_at DESC LIMIT ?
+  `).all(limit);
 
-    // Merge and sort by date
-    const activities = [...transactions, ...triggers]
-        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-        .slice(0, limit);
+  // Merge and sort by date
+  const activities = [...transactions, ...triggers]
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    .slice(0, limit);
 
-    res.json({ activities });
+  res.json({ activities });
 });
 
 module.exports = router;
