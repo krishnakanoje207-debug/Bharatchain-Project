@@ -240,3 +240,95 @@ async function start() {
             }
         });
         }, 60_000);
+
+      // onchain intervals
+      setInterval(async () => {
+      let unregistered;
+      try {
+        unregistered = await db.prepare(`
+          SELECT ca.*, u.wallet_address
+          FROM citizen_applications ca
+          LEFT JOIN users u ON ca.user_id = u.id
+          WHERE ca.status IN ('Approved', 'Funded')
+            AND ca.on_chain_citizen_id IS NULL
+            AND u.wallet_address IS NOT NULL
+        `).all();
+      } catch (e) { return; }
+
+      if (unregistered.length === 0) return;
+
+      console.log(`\n🔗 [ON-CHAIN SYNC] Found ${unregistered.length} citizen(s) not yet on blockchain...`);
+
+      const { withTxLock } = require("./utils/contractSigner");
+      withTxLock(async () => {
+        const { ethers } = require("ethers");
+        const { getCitizenRegistry, getDeployerSigner } = require("./utils/contractSigner");
+
+        // === Health check: verify the CitizenRegistry contract exists on-chain ===
+        try {
+          const { signer, addresses } = getDeployerSigner();
+          const code = await signer.provider.getCode(addresses.CitizenRegistry);
+          if (!code || code === "0x") {
+            console.warn("   ⚠️ [SYNC SKIP] CitizenRegistry contract not found on-chain. Redeploy contracts first.");
+            console.warn("   💡 Run: npx hardhat run scripts/deploy.js --network localhost");
+            return;
+          }
+        } catch (healthErr) {
+          console.warn(`   ⚠️ [SYNC SKIP] Cannot reach blockchain: ${healthErr.message}`);
+          return;
+        }
+
+        for (const app of unregistered) {
+          try {
+            // Skip citizens with missing data
+            if (!app.wallet_address || !app.pan || !app.phone) {
+              console.warn(`   ⚠️ [SKIP] ${app.citizen_name || 'Unknown'}: missing wallet(${!!app.wallet_address}), pan(${!!app.pan}), phone(${!!app.phone})`);
+              continue;
+            }
+
+            console.log(`   🔄 Registering ${app.citizen_name} (wallet: ${app.wallet_address.slice(0,10)}..., scheme: ${app.scheme_id})`);
+
+            const { contract: citizenReg } = getCitizenRegistry();
+            const zkCommitment = ethers.keccak256(ethers.toUtf8Bytes(`${app.pan}:${app.phone}`));
+            const mobileHash = ethers.keccak256(ethers.toUtf8Bytes(app.phone));
+
+            const tx = await citizenReg.registerCitizenByAdmin(app.wallet_address, zkCommitment, mobileHash, app.scheme_id);
+            const receipt = await tx.wait();
+
+            const { contract: cr2 } = getCitizenRegistry();
+            const totalCitizens = await cr2.getTotalCitizens();
+            const onChainId = Number(totalCitizens);
+
+            await db.prepare("UPDATE citizen_applications SET on_chain_citizen_id = ?, on_chain_tx_hash = ? WHERE id = ?")
+              .run(onChainId, receipt.hash, app.id);
+            console.log(`   ✅ [SYNCED] ${app.citizen_name} → On-chain ID: ${onChainId}`);
+          } catch (regErr) {
+            if (regErr.reason?.includes("already registered") || regErr.message?.includes("already registered")) {
+              try {
+                const { contract: cr } = getCitizenRegistry();
+                const data = await cr.getCitizenByWallet(app.wallet_address);
+                await db.prepare("UPDATE citizen_applications SET on_chain_citizen_id = ?, on_chain_tx_hash = 'synced' WHERE id = ?")
+                  .run(Number(data.id), app.id);
+                console.log(`   ↩️ [ALREADY ON-CHAIN] ${app.citizen_name} — synced`);
+              } catch { /* ignore */ }
+            } else if (regErr.code === "BAD_DATA" || regErr.message?.includes("could not decode")) {
+              console.warn(`   ⚠️ [SYNC SKIP] Contract not deployed or chain reset. Redeploy contracts.`);
+              break;
+            } else {
+              console.warn(`   ⚠️ [SYNC FAILED] ${app.citizen_name}: ${regErr.reason || regErr.message}`);
+              // Log full error for debugging
+              if (regErr.data) console.warn(`      Data: ${regErr.data}`);
+            }
+          }
+        }
+      }).catch(syncErr => {
+        if (!syncErr.message?.includes("deployed-addresses")) {
+          console.error("❌ [ON-CHAIN SYNC ERROR]", syncErr.message);
+        }
+      });
+    }, 120_000);
+}
+
+start();
+
+module.exports = app;
