@@ -38,3 +38,25 @@ export default function AdminSchemes() {
       if (res.ok) { setShowForm(false); setForm({ name: '', description: '', totalFund: '', perCitizenAmount: '', instalmentCount: '1', targetOccupation: 'Farmer', status: 'Active' }); loadSchemes(); }
     } catch (e) { setMsg(`❌ ${e.message}`); }
   };
+
+  const deleteScheme = async (id, name) => {
+    if (!confirm(`Delete scheme "${name}"? This cannot be undone.`)) return;
+    try {
+      const res = await authFetch(`/api/admin/schemes/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      setMsg(res.ok ? `✅ ${data.message}` : `❌ ${data.error}`);
+      if (res.ok) loadSchemes();
+    } catch (e) { setMsg(`❌ ${e.message}`); }
+  };
+
+  const changeStatus = async (id, newStatus) => {
+    try {
+      const res = await authFetch(`/api/admin/schemes/${id}/status`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+      const data = await res.json();
+      setMsg(res.ok ? `✅ ${data.message}` : `❌ ${data.error}`);
+      if (res.ok) loadSchemes();
+    } catch (e) { setMsg(`❌ ${e.message}`); }
+  };
