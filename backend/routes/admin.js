@@ -455,3 +455,96 @@ router.put("/event-triggers/:id", requireRole("rbi_admin"), async (req, res) => 
 
     res.json({ success: true, message: "Trigger updated" });
 });
+
+router.post("/event-triggers/:id/execute", requireRole("rbi_admin", "admin"), async (req, res) => {
+    const db = req.app.locals.db;
+    const trigger = await db.prepare(`
+        SELECT et.*, s.per_citizen_amount, s.name as scheme_name
+        FROM event_triggers et
+        LEFT JOIN schemes s ON et.scheme_id = s.id
+        WHERE et.id = ?
+    `).get(req.params.id);
+
+    if (!trigger) return res.status(404).json({ error: "Trigger not found" });
+    if (trigger.status === "Executed") return res.status(400).json({ error: "Trigger already executed" });
+
+    try {
+        const { ethers } = require("ethers");
+        const { getTokenDistributor, getCitizenRegistry, getDeployerSigner, withTxLock } = require("../utils/contractSigner");
+
+        const amountPerCitizen = trigger.per_citizen_amount || 6000;
+        const amountWei = ethers.parseEther(String(amountPerCitizen));
+
+        console.log(`\n🚀 [MANUAL EXECUTE] Trigger #${trigger.id} — "${trigger.scheme_name}" — ₹${amountPerCitizen}`);
+
+        await withTxLock(async () => {
+        // Step 0: Ensure approved citizens are on-chain
+        const unsynced = await db.prepare(`
+            SELECT ca.*, u.wallet_address
+            FROM citizen_applications ca
+            JOIN users u ON ca.user_id = u.id
+            WHERE ca.status = 'Approved' AND ca.scheme_id = ?
+            AND ca.on_chain_citizen_id IS NULL AND u.wallet_address IS NOT NULL
+        `).all(trigger.scheme_id);
+
+        if (unsynced.length > 0) {
+            console.log(`   🔗 Syncing ${unsynced.length} unregistered citizen(s) before distribution...`);
+            for (const c of unsynced) {
+            try {
+                const { contract: cr } = getCitizenRegistry();
+                const zkCommitment = ethers.keccak256(ethers.toUtf8Bytes(`${c.pan}:${c.phone}`));
+                const mobileHash = ethers.keccak256(ethers.toUtf8Bytes(c.phone));
+                const regTx = await cr.registerCitizenByAdmin(c.wallet_address, zkCommitment, mobileHash, c.scheme_id);
+                await regTx.wait();
+
+                const { contract: cr2 } = getCitizenRegistry();
+                const totalCitizens = await cr2.getTotalCitizens();
+                await db.prepare("UPDATE citizen_applications SET on_chain_citizen_id = ?, on_chain_tx_hash = 'manual-sync' WHERE id = ?")
+                .run(Number(totalCitizens), c.id);
+                console.log(`   ✅ ${c.citizen_name}: synced to chain (ID ${Number(totalCitizens)})`);
+            } catch (syncErr) {
+                console.warn(`   ⚠️ ${c.citizen_name}: ${syncErr.reason || syncErr.message}`);
+            }
+            }
+        }
+
+        // Step 1: Configure distribution
+        const { contract: td1 } = getTokenDistributor();
+        const configTx = await td1.configureDistribution(trigger.scheme_id, amountWei);
+        await configTx.wait();
+
+        // Step 2: Distribute
+        const { contract: td2 } = getTokenDistributor();
+        const distTx = await td2.manualDistribute();
+        const receipt = await distTx.wait();
+
+        // Step 3: Mark trigger executed
+        await db.prepare("UPDATE event_triggers SET status = 'Executed', executed_at = NOW(), error_message = NULL WHERE id = ?")
+            .run(trigger.id);
+
+        // Step 4: Mark on-chain citizens as Funded
+        const fundedCount = await db.prepare(`
+            UPDATE citizen_applications SET status = 'Funded'
+            WHERE scheme_id = ? AND status = 'Approved' AND on_chain_citizen_id IS NOT NULL
+        `).run(trigger.scheme_id);
+
+        // Step 5: Notify
+        const fundedApps = await db.prepare("SELECT user_id, citizen_name, phone FROM citizen_applications WHERE scheme_id = ? AND status = 'Funded'")
+            .all(trigger.scheme_id);
+        for (const a of fundedApps) {
+            await db.prepare("INSERT INTO notifications (user_id, type, recipient, message) VALUES (?, ?, ?, ?)")
+            .run(a.user_id, "sms", a.phone,
+                `Dear ${a.citizen_name}, ₹${amountPerCitizen} Digital Rupees have been deposited to your wallet for "${trigger.scheme_name}".`);
+        }
+
+        console.log(`   ✅ [EXECUTED] TX: ${receipt.hash.slice(0,14)}... — ${fundedCount.changes} citizen(s) funded\n`);
+        });
+
+        res.json({ success: true, message: `Trigger #${trigger.id} executed — tokens distributed` });
+    } catch (err) {
+        const errMsg = err.reason || err.shortMessage || err.message;
+        console.error(`   ❌ [MANUAL EXECUTE ERROR] Trigger #${trigger.id}: ${errMsg}`);
+        await db.prepare("UPDATE event_triggers SET error_message = ? WHERE id = ?").run(errMsg, trigger.id);
+        res.status(500).json({ error: `Distribution failed: ${errMsg}` });
+    }
+});

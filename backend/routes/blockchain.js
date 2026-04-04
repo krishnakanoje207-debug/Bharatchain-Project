@@ -1,6 +1,9 @@
 const express = require("express");
 const { authenticateToken } = require("../middleware/auth");
-const { getSignerWallet, decryptPrivateKey } = require("../utils/walletGenerator");
+const {
+  getSignerWallet,
+  decryptPrivateKey,
+} = require("../utils/walletGenerator");
 const { ethers } = require("ethers");
 // loading enviornment variables
 const router = express.Router();
@@ -13,107 +16,164 @@ let contractAddresses = {};
 try {
   contractAddresses = require("../../frontend/src/config/deployed-addresses.json");
 } catch {
-  console.warn("⚠️  No deployed-addresses.json found. Blockchain routes will fail until deployment.");
+  console.warn(
+    "⚠️  No deployed-addresses.json found. Blockchain routes will fail until deployment.",
+  );
 }
 
 // Minimal ABIs for backend signing
 const CITIZEN_REGISTRY_ABI = [
-  "function registerCitizen(bytes32 zkCommitment, bytes32 mobileHash, uint256 schemeId, uint256[2] a, uint256[2][2] b, uint256[2] c, uint256[1] input) external returns (uint256)"
+  "function registerCitizen(bytes32 zkCommitment, bytes32 mobileHash, uint256 schemeId, uint256[2] a, uint256[2][2] b, uint256[2] c, uint256[1] input) external returns (uint256)",
 ];
 
 const VENDOR_REGISTRY_ABI = [
-  "function registerVendor(uint8 vendorType, string businessName, bytes32 credentialHash, bytes32 bankAccountHash, bytes32 ifscHash) external returns (uint256)"
+  "function registerVendor(uint8 vendorType, string businessName, bytes32 credentialHash, bytes32 bankAccountHash, bytes32 ifscHash) external returns (uint256)",
 ];
 // api for registering citizen on blockchain
 router.post("/register-citizen", async (req, res) => {
-  const { zkCommitment, mobileHash, schemeId, proof } = req.body;// acccessing data
+  const { zkCommitment, mobileHash, schemeId, proof } = req.body; // acccessing data
   const db = req.app.locals.db;
 
   try {
-    const user = await db.prepare("SELECT wallet_private_key_enc, wallet_address FROM users WHERE id = ?").get(req.user.userId);// fetching wallet of user
+    const user = await db
+      .prepare(
+        "SELECT wallet_private_key_enc, wallet_address FROM users WHERE id = ?",
+      )
+      .get(req.user.userId); // fetching wallet of user
     if (!user || !user.wallet_private_key_enc) {
-      return res.status(400).json({ error: "No wallet generated for this user. Apply for a scheme first." });// if wallet isn't generated then return error
+      return res
+        .status(400)
+        .json({
+          error: "No wallet generated for this user. Apply for a scheme first.",
+        }); // if wallet isn't generated then return error
     }
     // creating a signer wallet using private key
     const signer = getSignerWallet(user.wallet_private_key_enc, RPC_URL);
     const citizenReg = new ethers.Contract(
       contractAddresses.CitizenRegistry || ethers.ZeroAddress,
       CITIZEN_REGISTRY_ABI,
-      signer
+      signer,
     );
     // calling register citizen
     const tx = await citizenReg.registerCitizen(
-      zkCommitment, mobileHash, schemeId,
-      proof.a, proof.b, proof.c, proof.input
+      zkCommitment,
+      mobileHash,
+      schemeId,
+      proof.a,
+      proof.b,
+      proof.c,
+      proof.input,
     );
-    const receipt = await tx.wait();// waiting for transaction to be mined
+    const receipt = await tx.wait(); // waiting for transaction to be mined
     //  when response == true
     res.json({
       success: true,
       txHash: receipt.hash,
-      message: "Citizen registered on-chain (auto-approved)"
+      message: "Citizen registered on-chain (auto-approved)",
     });
   } catch (err) {
-    console.error("Blockchain register-citizen error:", err.reason || err.message);
-    res.status(500).json({ error: err.reason || err.message || "On-chain registration failed" });
+    console.error(
+      "Blockchain register-citizen error:",
+      err.reason || err.message,
+    );
+    res
+      .status(500)
+      .json({
+        error: err.reason || err.message || "On-chain registration failed",
+      });
   }
 });
 // api for registering vendor on blockchain
 router.post("/register-vendor", async (req, res) => {
-  const { vendorType, businessName, credentialHash, bankAccountHash, ifscHash } = req.body;
+  const {
+    vendorType,
+    businessName,
+    credentialHash,
+    bankAccountHash,
+    ifscHash,
+  } = req.body;
   const db = req.app.locals.db;
 
   try {
-    const user = await db.prepare("SELECT wallet_private_key_enc, wallet_address FROM users WHERE id = ?").get(req.user.userId);
+    const user = await db
+      .prepare(
+        "SELECT wallet_private_key_enc, wallet_address FROM users WHERE id = ?",
+      )
+      .get(req.user.userId);
     if (!user || !user.wallet_private_key_enc) {
-      return res.status(400).json({ error: "No wallet generated for this user." });
+      return res
+        .status(400)
+        .json({ error: "No wallet generated for this user." });
     }
 
     const signer = getSignerWallet(user.wallet_private_key_enc, RPC_URL);
     const vendorReg = new ethers.Contract(
       contractAddresses.VendorRegistry || ethers.ZeroAddress,
       VENDOR_REGISTRY_ABI,
-      signer
+      signer,
     );
 
     const tx = await vendorReg.registerVendor(
-      vendorType, businessName, credentialHash, bankAccountHash, ifscHash
+      vendorType,
+      businessName,
+      credentialHash,
+      bankAccountHash,
+      ifscHash,
     );
     const receipt = await tx.wait();
 
     res.json({
       success: true,
       txHash: receipt.hash,
-      message: "Vendor registered on-chain (pending admin approval)"
+      message: "Vendor registered on-chain (pending admin approval)",
     });
   } catch (err) {
-    console.error("Blockchain register-vendor error:", err.reason || err.message);
-    res.status(500).json({ error: err.reason || err.message || "On-chain registration failed" });
+    console.error(
+      "Blockchain register-vendor error:",
+      err.reason || err.message,
+    );
+    res
+      .status(500)
+      .json({
+        error: err.reason || err.message || "On-chain registration failed",
+      });
   }
 });
 // for loading contract addresses freshly to handle redeployments without server restart
 router.get("/wallet-info", async (req, res) => {
   const db = req.app.locals.db;
-  const user = await db.prepare("SELECT wallet_address, wallet_private_key_enc FROM users WHERE id = ?").get(req.user.userId);
+  const user = await db
+    .prepare(
+      "SELECT wallet_address, wallet_private_key_enc FROM users WHERE id = ?",
+    )
+    .get(req.user.userId);
 
   if (!user || !user.wallet_address) {
-    return res.json({ wallet: null, balance: "0", message: "No wallet yet. Apply for a scheme to get one." });
+    return res.json({
+      wallet: null,
+      balance: "0",
+      message: "No wallet yet. Apply for a scheme to get one.",
+    });
   }
 
   try {
     const provider = new ethers.JsonRpcProvider(RPC_URL);
     const balance = await provider.getBalance(user.wallet_address);
-    
+
     // Load FRESH contract addresses (not cached) to handle redeployments
     let freshAddresses = {};
     try {
-      delete require.cache[require.resolve("../../frontend/src/config/deployed-addresses.json")];
+      delete require.cache[
+        require.resolve("../../frontend/src/config/deployed-addresses.json")
+      ];
       freshAddresses = require("../../frontend/src/config/deployed-addresses.json");
     } catch {
       try {
         delete require.cache[require.resolve("../../deployed-addresses.json")];
         freshAddresses = require("../../deployed-addresses.json");
-      } catch { /* no addresses available */ }
+      } catch {
+        /* no addresses available */
+      }
     }
 
     // Check Digital Rupee token balance
@@ -122,22 +182,28 @@ router.get("/wallet-info", async (req, res) => {
       const dr = new ethers.Contract(
         freshAddresses.DigitalRupee,
         ["function balanceOf(address) view returns (uint256)"],
-        provider
+        provider,
       );
       try {
         const bal = await dr.balanceOf(user.wallet_address);
         tokenBalance = ethers.formatEther(bal);
-      } catch { /* contract may not be deployed */ }
+      } catch {
+        /* contract may not be deployed */
+      }
     }
 
     res.json({
       wallet: user.wallet_address,
       ethBalance: ethers.formatEther(balance),
       tokenBalance,
-      message: "Wallet auto-generated from your identity"
+      message: "Wallet auto-generated from your identity",
     });
   } catch (err) {
-    res.json({ wallet: user.wallet_address, ethBalance: "0", tokenBalance: "0" });
+    res.json({
+      wallet: user.wallet_address,
+      ethBalance: "0",
+      tokenBalance: "0",
+    });
   }
 });
 // api for looking up vendor details by phone number
@@ -145,27 +211,46 @@ router.post("/lookup-vendor", async (req, res) => {
   const { vendorPhone } = req.body;
   const db = req.app.locals.db;
 
-  if (!vendorPhone) return res.status(400).json({ error: "Vendor phone number required" });
+  if (!vendorPhone)
+    return res.status(400).json({ error: "Vendor phone number required" });
 
   // Look up vendor in vendor_applications by phone
-  const vendor = await db.prepare(`
+  const vendor = await db
+    .prepare(
+      `
     SELECT va.*, u.wallet_address, u.phone
     FROM vendor_applications va
     JOIN users u ON va.user_id = u.id
     WHERE u.phone = ? AND va.status = 'Approved'
-  `).get(vendorPhone);
+  `,
+    )
+    .get(vendorPhone);
 
   if (!vendor) {
     // Check if vendor exists but not approved
-    const pending = await db.prepare(`
+    const pending = await db
+      .prepare(
+        `
       SELECT va.status FROM vendor_applications va
       JOIN users u ON va.user_id = u.id WHERE u.phone = ?
-    `).get(vendorPhone);
+    `,
+      )
+      .get(vendorPhone);
 
     if (pending) {
-      return res.status(403).json({ error: `Vendor exists but status is "${pending.status}". Only government-approved vendors can receive payments.`, verified: false });
+      return res
+        .status(403)
+        .json({
+          error: `Vendor exists but status is "${pending.status}". Only government-approved vendors can receive payments.`,
+          verified: false,
+        });
     }
-    return res.status(404).json({ error: "No registered vendor found with this phone number.", verified: false });
+    return res
+      .status(404)
+      .json({
+        error: "No registered vendor found with this phone number.",
+        verified: false,
+      });
   }
 
   res.json({
@@ -173,7 +258,7 @@ router.post("/lookup-vendor", async (req, res) => {
     vendorName: vendor.business_name,
     vendorType: vendor.vendor_type,
     walletAddress: vendor.wallet_address,
-    phone: vendor.phone
+    phone: vendor.phone,
   });
 });
 
@@ -182,26 +267,43 @@ router.post("/pay-vendor", async (req, res) => {
   const { vendorPhone, amount } = req.body;
   const db = req.app.locals.db;
 
-  if (!vendorPhone || !amount) return res.status(400).json({ error: "Vendor phone and amount required" });
+  if (!vendorPhone || !amount)
+    return res.status(400).json({ error: "Vendor phone and amount required" });
   const amountNum = parseFloat(amount);
-  if (isNaN(amountNum) || amountNum <= 0) return res.status(400).json({ error: "Amount must be a positive number" });
+  if (isNaN(amountNum) || amountNum <= 0)
+    return res.status(400).json({ error: "Amount must be a positive number" });
 
   // 1. Get citizen's wallet
-  const citizen = await db.prepare("SELECT wallet_address, wallet_private_key_enc, name FROM users WHERE id = ?").get(req.user.userId);
+  const citizen = await db
+    .prepare(
+      "SELECT wallet_address, wallet_private_key_enc, name FROM users WHERE id = ?",
+    )
+    .get(req.user.userId);
   if (!citizen || !citizen.wallet_private_key_enc) {
-    return res.status(400).json({ error: "No wallet found. Apply for a scheme first." });
+    return res
+      .status(400)
+      .json({ error: "No wallet found. Apply for a scheme first." });
   }
 
   // 2. Look up vendor by phone — must be approved
-  const vendor = await db.prepare(`
+  const vendor = await db
+    .prepare(
+      `
     SELECT va.business_name, va.status, u.wallet_address as vendor_wallet, u.phone
     FROM vendor_applications va
     JOIN users u ON va.user_id = u.id
     WHERE u.phone = ? AND va.status = 'Approved'
-  `).get(vendorPhone);
+  `,
+    )
+    .get(vendorPhone);
 
   if (!vendor) {
-    return res.status(404).json({ error: "No government-approved vendor found with this phone number. Payment blocked." });
+    return res
+      .status(404)
+      .json({
+        error:
+          "No government-approved vendor found with this phone number. Payment blocked.",
+      });
   }
 
   if (!vendor.vendor_wallet) {
@@ -212,7 +314,9 @@ router.post("/pay-vendor", async (req, res) => {
     // 3. Load fresh contract addresses
     let freshAddresses = {};
     try {
-      delete require.cache[require.resolve("../../frontend/src/config/deployed-addresses.json")];
+      delete require.cache[
+        require.resolve("../../frontend/src/config/deployed-addresses.json")
+      ];
       freshAddresses = require("../../frontend/src/config/deployed-addresses.json");
     } catch {
       delete require.cache[require.resolve("../../deployed-addresses.json")];
@@ -230,9 +334,9 @@ router.post("/pay-vendor", async (req, res) => {
       freshAddresses.DigitalRupee,
       [
         "function transfer(address to, uint256 amount) returns (bool)",
-        "function balanceOf(address) view returns (uint256)"
+        "function balanceOf(address) view returns (uint256)",
       ],
-      citizenSigner
+      citizenSigner,
     );
 
     // 6. Check balance
@@ -240,7 +344,7 @@ router.post("/pay-vendor", async (req, res) => {
     const amountWei = ethers.parseEther(String(amountNum));
     if (balance < amountWei) {
       return res.status(400).json({
-        error: `Insufficient balance. You have ₹${ethers.formatEther(balance)} but tried to send ₹${amountNum}.`
+        error: `Insufficient balance. You have ₹${ethers.formatEther(balance)} but tried to send ₹${amountNum}.`,
       });
     }
 
@@ -249,32 +353,55 @@ router.post("/pay-vendor", async (req, res) => {
     const receipt = await tx.wait();
 
     // 8. Log to DB transaction_log
-    await db.prepare("INSERT INTO transaction_log (tx_type, from_address, to_address, amount, description, tx_hash) VALUES (?, ?, ?, ?, ?, ?)")
-      .run("CitizenToVendor", citizen.wallet_address, vendor.vendor_wallet, amountNum,
-        `${citizen.name} → ${vendor.business_name} (₹${amountNum})`, receipt.hash);
+    await db
+      .prepare(
+        "INSERT INTO transaction_log (tx_type, from_address, to_address, amount, description, tx_hash) VALUES (?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        "CitizenToVendor",
+        citizen.wallet_address,
+        vendor.vendor_wallet,
+        amountNum,
+        `${citizen.name} → ${vendor.business_name} (₹${amountNum})`,
+        receipt.hash,
+      );
 
     // 9. Log to on-chain TransactionLedger (as deployer/admin with LOGGER_ROLE)
     try {
-      const { getTransactionLedger, withTxLock } = require("../utils/contractSigner");
+      const {
+        getTransactionLedger,
+        withTxLock,
+      } = require("../utils/contractSigner");
       await withTxLock(async () => {
         const { contract: ledger } = getTransactionLedger();
-        await (await ledger.logTransaction(
-          2, // CitizenToVendor
-          citizen.wallet_address,
-          vendor.vendor_wallet,
-          amountWei,
-          `Payment: ${citizen.name} → ${vendor.business_name}`
-        )).wait();
+        await (
+          await ledger.logTransaction(
+            2, // CitizenToVendor
+            citizen.wallet_address,
+            vendor.vendor_wallet,
+            amountWei,
+            `Payment: ${citizen.name} → ${vendor.business_name}`,
+          )
+        ).wait();
       });
       console.log(`   📒 Logged citizen→vendor transfer to TransactionLedger`);
     } catch (logErr) {
-      console.warn(`   ⚠️ TransactionLedger log skipped: ${logErr.reason || logErr.message}`);
+      console.warn(
+        `   ⚠️ TransactionLedger log skipped: ${logErr.reason || logErr.message}`,
+      );
     }
 
     // 10. Log notification in DB
-    await db.prepare("INSERT INTO notifications (user_id, type, recipient, message) VALUES (?, ?, ?, ?)")
-      .run(req.user.userId, "system", citizen.wallet_address,
-        `Sent ₹${amountNum} to "${vendor.business_name}" (${vendorPhone}). TX: ${receipt.hash.slice(0,14)}...`);
+    await db
+      .prepare(
+        "INSERT INTO notifications (user_id, type, recipient, message) VALUES (?, ?, ?, ?)",
+      )
+      .run(
+        req.user.userId,
+        "system",
+        citizen.wallet_address,
+        `Sent ₹${amountNum} to "${vendor.business_name}" (${vendorPhone}). TX: ${receipt.hash.slice(0, 14)}...`,
+      );
 
     const newBalance = await digitalRupee.balanceOf(citizen.wallet_address);
 
@@ -284,11 +411,13 @@ router.post("/pay-vendor", async (req, res) => {
       vendorName: vendor.business_name,
       amountSent: amountNum,
       newBalance: ethers.formatEther(newBalance),
-      message: `Successfully sent ₹${amountNum} to ${vendor.business_name}`
+      message: `Successfully sent ₹${amountNum} to ${vendor.business_name}`,
     });
   } catch (err) {
     console.error("Pay-vendor error:", err.reason || err.message);
-    res.status(500).json({ error: err.reason || err.message || "Transfer failed" });
+    res
+      .status(500)
+      .json({ error: err.reason || err.message || "Transfer failed" });
   }
 });
 // API for vendor requesting INR Exchange
@@ -296,24 +425,35 @@ router.post("/request-exchange", async (req, res) => {
   const { amount } = req.body;
   const db = req.app.locals.db;
 
-  if (!amount || parseFloat(amount) <= 0) return res.status(400).json({ error: "Valid amount required" });
+  if (!amount || parseFloat(amount) <= 0)
+    return res.status(400).json({ error: "Valid amount required" });
 
   // Get vendor's wallet
-  const user = await db.prepare("SELECT wallet_address, wallet_private_key_enc FROM users WHERE id = ?").get(req.user.userId);
+  const user = await db
+    .prepare(
+      "SELECT wallet_address, wallet_private_key_enc FROM users WHERE id = ?",
+    )
+    .get(req.user.userId);
   if (!user || !user.wallet_private_key_enc) {
     return res.status(400).json({ error: "No wallet found." });
   }
 
   // Check vendor is approved
-  const vendor = await db.prepare("SELECT status FROM vendor_applications WHERE user_id = ?").get(req.user.userId);
+  const vendor = await db
+    .prepare("SELECT status FROM vendor_applications WHERE user_id = ?")
+    .get(req.user.userId);
   if (!vendor || vendor.status !== "Approved") {
-    return res.status(403).json({ error: "Only approved vendors can request exchange." });
+    return res
+      .status(403)
+      .json({ error: "Only approved vendors can request exchange." });
   }
 
   try {
     let freshAddresses = {};
     try {
-      delete require.cache[require.resolve("../../frontend/src/config/deployed-addresses.json")];
+      delete require.cache[
+        require.resolve("../../frontend/src/config/deployed-addresses.json")
+      ];
       freshAddresses = require("../../frontend/src/config/deployed-addresses.json");
     } catch {
       delete require.cache[require.resolve("../../deployed-addresses.json")];
@@ -328,20 +468,24 @@ router.post("/request-exchange", async (req, res) => {
     const vendorReg = new ethers.Contract(
       freshAddresses.VendorRegistry,
       ["function requestExchange(uint256 amount) external"],
-      vendorSigner
+      vendorSigner,
     );
 
     const amountWei = ethers.parseEther(String(amount));
     const tx = await vendorReg.requestExchange(amountWei);
     await tx.wait();
 
-    res.json({ success: true, message: `Exchange request for ₹${amount} submitted on-chain.`, txHash: tx.hash });
+    res.json({
+      success: true,
+      message: `Exchange request for ₹${amount} submitted on-chain.`,
+      txHash: tx.hash,
+    });
   } catch (err) {
     console.error("Request-exchange error:", err.reason || err.message);
-    res.status(500).json({ error: err.reason || err.message || "Exchange request failed" });
+    res
+      .status(500)
+      .json({ error: err.reason || err.message || "Exchange request failed" });
   }
 });
 
 module.exports = router;
-
-
