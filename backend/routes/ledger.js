@@ -43,3 +43,26 @@ router.get("/transactions", async (req, res) => {
     }
   });
 });
+
+/**
+ * GET /api/ledger/summary
+ * Returns aggregated ledger stats.
+ */
+router.get("/summary", async (req, res) => {
+  const db = req.app.locals.db;
+
+  const totalRow = await db.prepare("SELECT COUNT(*) as count FROM transaction_log").get();
+  const total = Number(totalRow.count);
+  const totalAmountRow = await db.prepare("SELECT COALESCE(SUM(amount), 0) as total FROM transaction_log WHERE tx_type IN ('CitizenToVendor','TokenAllocation')").get();
+  const totalAmount = Number(totalAmountRow.total);
+  const totalRevokedRow = await db.prepare("SELECT COALESCE(SUM(amount), 0) as total FROM transaction_log WHERE tx_type = 'TokenRevocation'").get();
+  const totalRevoked = Number(totalRevokedRow.total);
+
+  res.json({
+    totalTransactions: total,
+    totalDistributed: totalAmount,
+    totalRevoked
+  });
+});
+
+module.exports = router;
