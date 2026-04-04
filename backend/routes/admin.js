@@ -548,3 +548,17 @@ router.post("/event-triggers/:id/execute", requireRole("rbi_admin", "admin"), as
         res.status(500).json({ error: `Distribution failed: ${errMsg}` });
     }
 });
+
+//user management endpoint
+router.get("/users", requireRole("admin"), async (req, res) => {
+    const db = req.app.locals.db;
+    const users = await db.prepare("SELECT id, phone, email, name, role, wallet_address, created_at FROM users").all();
+    res.json({ users, total: users.length });
+});
+
+//notification enpoint
+router.get("/notifications/:userId", requireRole("admin", "rbi_admin"), async (req, res) => {
+    const db = req.app.locals.db;
+    const notifications = await db.prepare("SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC").all(req.params.userId);
+    res.json({ notifications });
+});
