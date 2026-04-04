@@ -1,0 +1,13 @@
+{
+  "DigitalRupee": "0x60F9A7b737966c40E3B03D49FE1968424cf93787",
+  "ZKVerifier": "0xbc4558E34852dF7b6c47F4650ba324F972d0832B",
+  "TransactionLedger": "0x7276980AdFD782b8C2421ba135e97faFEf2028A1",
+  "CitizenRegistry": "0x62ED4caCbE64b8f1F62b3BE53da33448B1907C29",
+  "VendorRegistry": "0x48540B2AB2d72d766E9a66Ce4a505B28c04Ae662",
+  "WelfareScheme": "0x1583602dbB9578134ec89Acc87abC0Da825c52e1",
+  "TokenDistributor": "0xb06dE88c73dEeFDa174BcCd5cB7f92532fB74ae8",
+  "deployer": "0xC777d498733dd213bBE0477b51eF4623365DDFdb",
+  "deployerPrivateKey": "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+  "network": "sepolia",
+  "deployedAt": "2026-03-31T08:26:47.788Z"
+}

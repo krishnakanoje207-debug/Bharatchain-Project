@@ -93,7 +93,7 @@ async function initDatabase() {
             UNIQUE(user_id, scheme_id)
         );
 
-        CREATE TABLE IF NOT EXISTS event-triggers (
+        CREATE TABLE IF NOT EXISTS event_triggers (
             id SERIAL PRIMARY KEY,
             scheme_id INTEGER NOT NULL,
             instalment_number INTEGER NOT NULL DEFAULT 1,
@@ -111,7 +111,7 @@ async function initDatabase() {
             id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL,
             business_name TEXT NOT NULL,
-            venodr_type TEXT DEFAULT 'FarmingSupplier',
+            vendor_type TEXT DEFAULT 'FarmingSupplier',
             credential TEXT,
             bank_account TEXT,
             ifsc_code TEXT,
@@ -175,15 +175,15 @@ async function initDatabase() {
     try { await db.exec('ALTER TABLE vendor_applications ADD COLUMN on_chain_vendor_id INTEGER'); } catch(e) {}
 
     //admin seedings - checking
-    const userCountRes = await db.query("SELECT COUNT(*) as count FROM users").get();
-    if (number(userCountRes.count) === 0) {
+    const userCountRes = await db.prepare("SELECT COUNT(*) as count FROM users").get();
+    if (Number(userCountRes.count) === 0) {
         console.log("🌱 Seeding admin users...");
         const adminHash = bcrypt.hashSync("admin123", 10);
         const rbiAdminHash = bcrypt.hashSync("rbi123", 10);
         await db.prepare('INSERT INTO users (phone, email, password_hash, name, role, phone_verified) VALUES (?, ?, ?, ?, ?, ?)')
             .run("9000000001", "admin@bharatchain.gov.in", adminHash, "System Administrator", "admin", 1);
         await db.prepare(`INSERT INTO users (phone, email, password_hash, name, role, phone_verified) VALUES (?, ?, ?, ?, ?, ?)`)
-            .run("9000000002", "admin@rbi.gov.in", rbiHash, "RBI Administrator", "rbi_admin", 1);
+            .run("9000000002", "admin@rbi.gov.in", rbiAdminHash, "RBI Administrator", "rbi_admin", 1);
         console.log("   ✅ Admin: phone 9000000001 / admin123");
         console.log("   ✅ RBI:   phone 9000000002 / rbi123");
     }

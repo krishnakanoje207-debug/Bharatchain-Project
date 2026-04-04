@@ -1,0 +1,16 @@
+node_modules/
+cache/
+artifacts/
+.env
+coverage/
+coverage.json
+typechain-types/
+backend/node_modules/
+backend/*.db
+frontend/node_modules/
+frontend/dist/
+node_modules/
+target/
+*.wasm
+*.r1cs
+citizenProof.sym
