@@ -51,3 +51,59 @@
   --topbar-height: 52px;
 }
 
+/* ==================== LIGHT MODE ==================== */
+[data-theme="light"] {
+  --bg-primary: #f5f7fa;
+  --bg-secondary: #ffffff;
+  --bg-card: rgba(255, 255, 255, 0.95);
+  --bg-glass: rgba(0, 0, 0, 0.03);
+  --bg-glass-hover: rgba(0, 0, 0, 0.06);
+  
+  --text-primary: #1a1a2e;
+  --text-secondary: #4a5568;
+  --text-muted: #718096;
+  
+  --accent-primary: #5b5fc7;
+  --accent-secondary: #7c5cbf;
+  --accent-glow: rgba(91, 95, 199, 0.2);
+  
+  --success-bg: rgba(16, 185, 129, 0.1);
+  --warning-bg: rgba(245, 158, 11, 0.1);
+  --error-bg: rgba(239, 68, 68, 0.1);
+  --info-bg: rgba(59, 130, 246, 0.1);
+
+  --border: rgba(0, 0, 0, 0.08);
+  --border-hover: rgba(0, 0, 0, 0.15);
+  
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.1);
+  --shadow-glow: 0 0 20px var(--accent-glow);
+}
+
+[data-theme="light"] .stat-value {
+  -webkit-text-fill-color: var(--accent-primary);
+}
+
+[data-theme="light"] nav {
+  background: rgba(255, 255, 255, 0.95) !important;
+}
+
+[data-theme="light"] .admin-sidebar {
+  background: #1a1a2e !important;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--font-primary);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.6;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root { min-height: 100vh; display: flex; flex-direction: column; }
