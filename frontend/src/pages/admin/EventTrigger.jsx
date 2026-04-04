@@ -20,3 +20,43 @@ export default function EventTriggers() {
     clockRef.current = setInterval(() => setNow(new Date()), 1000);
     return () => { clearInterval(pollRef.current); clearInterval(clockRef.current); };
   }, []);
+
+  const loadData = async (silent = false) => {
+    if (!silent) setLoading(true);
+    try {
+      const [trigRes, schRes] = await Promise.all([
+        authFetch('/api/admin/event-triggers'),
+        authFetch('/api/admin/schemes')
+      ]);
+      const trigData = await trigRes.json();
+      const schData = await schRes.json();
+      setTriggers(trigData.triggers || []);
+      setSchemes(schData.schemes || []);
+    } catch (err) { console.error(err); }
+    if (!silent) setLoading(false);
+  };
+
+  const scheduleTrigger = async () => {
+    if (!form.schemeId || !form.date || !form.time) return;
+    try {
+      await authFetch('/api/admin/event-triggers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ schemeId: form.schemeId, scheduledDate: form.date, scheduledTime: form.time })
+      });
+      setForm({ schemeId: '', date: '', time: '' });
+      setShowForm(false);
+      loadData(true);
+    } catch (err) { console.error(err); }
+  };
+
+  const retryTrigger = async (id) => {
+    try {
+      await authFetch(`/api/admin/event-triggers/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resetToScheduled: true })
+      });
+      loadData(true);
+    } catch (err) { console.error(err); }
+  };
