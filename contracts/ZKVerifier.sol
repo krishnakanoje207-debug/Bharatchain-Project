@@ -1,4 +1,4 @@
-// // SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 // creating zero knowledge verifier
 contract ZKVerifier {
@@ -6,9 +6,9 @@ contract ZKVerifier {
     event ProofVerified(bytes32 indexed commitment, bool valid, uint256 timestamp);
     //verifying proof 
     function verifyProof(
-        uint256[2] calldata a;
-        uint256[2][2] calldata b;
-        uint256[2] calldata c;
+        uint256[2] calldata a,
+        uint256[2][2] calldata b,
+        uint256[2] calldata c,
         unit256[1] calldata input
     ) external return (bool valid){
 require(a[0] != 0 && a[1] != 0, "Invalid proof element a");
