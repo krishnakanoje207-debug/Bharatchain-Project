@@ -133,3 +133,35 @@ export default function VendorManagement() {
             </div>
           )
         )}
+
+         {/* Gov DB Tab — shows only manually approved vendors */}
+        {tab === 'govdb' && (
+          govVendors.length === 0 ? (
+            <div className="card" style={{ textAlign: 'center', padding: '3rem' }}><p style={{ color: 'var(--text-secondary)' }}>No approved vendors yet — vendors appear here after admin approval</p></div>
+          ) : (
+          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+            <div className="table-wrapper">
+              <table>
+                <thead><tr><th>#</th><th>Business</th><th>Type</th><th>Owner</th><th>Bank A/C</th><th>IFSC</th><th>Credential</th></tr></thead>
+                <tbody>
+                  {govVendors.map(v => (
+                    <tr key={v.id}>
+                      <td>{v.id}</td>
+                      <td style={{ fontWeight: 600 }}>{v.business_name}</td>
+                      <td><span className="badge badge-info">{v.vendor_type}</span></td>
+                      <td>{v.owner_name}</td>
+                      <td className="mono" style={{ fontSize: '0.8rem' }}>{v.bank_account}</td>
+                      <td className="mono" style={{ fontSize: '0.8rem' }}>{v.ifsc_code}</td>
+                      <td><span className="badge badge-success">{v.degree || v.itr_status || 'Verified'}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          )
+        )}
+      </div>
+    </div>
+  );
+}
