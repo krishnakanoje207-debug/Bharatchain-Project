@@ -78,7 +78,7 @@ contract VendorRegistry is AccessControl {
     }
 
 
-    function approvevendor(uint256 vendorId) external onlyRole(ADMIN_ROLE){
+    function approveVendor(uint256 vendorId) external onlyRole(ADMIN_ROLE){
         vendor storage vendor = _vendor[vendorId];
         require(vendor.walletAddress!=address(0),"vendor does not exist");
         require(vendor status == VendorStatus.Pending,"vendor not verified");
