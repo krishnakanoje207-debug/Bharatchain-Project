@@ -97,4 +97,34 @@ export default function VendorDashboard() {
             )}
           </div>
         )}
-        
+
+        <div className="grid-2">
+          <Link to="/vendor/apply" className="card" style={{ textDecoration: 'none', textAlign: 'center', padding: '2rem' }}>
+            <FiFileText size={32} color="var(--accent-primary)" />
+            <h3 style={{ marginTop: '1rem', color: 'var(--text-primary)' }}>{vendorApp ? t('vendor.viewApp') : t('vendor.applyApproval')}</h3>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>{t('vendor.appDesc')}</p>
+          </Link>
+          <Link to="/vendor/exchange" className="card" style={{ textDecoration: 'none', textAlign: 'center', padding: '2rem', opacity: vendorApp?.status === 'Approved' ? 1 : 0.5 }}>
+            <FiRefreshCw size={32} color="var(--success)" />
+            <h3 style={{ marginTop: '1rem', color: 'var(--text-primary)' }}>{t('vendor.requestExchange')}</h3>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
+              {vendorApp?.status === 'Approved' ? t('vendor.exchangeDesc') : t('vendor.afterApproval')}
+            </p>
+          </Link>
+        </div>
+
+        {notifications.length > 0 && (
+          <div className="card mt-2" style={{ padding: '1.5rem', borderLeft: '4px solid var(--info)' }}>
+            <h3 style={{ marginBottom: '1rem' }}><FiBell size={16} /> {t('citizen.notifications')}</h3>
+            {notifications.slice(0, 5).map(n => (
+              <div key={n.id} style={{ padding: '0.5rem 0', borderBottom: '1px solid var(--border)', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                {n.message}
+                <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>{new Date(n.created_at).toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
