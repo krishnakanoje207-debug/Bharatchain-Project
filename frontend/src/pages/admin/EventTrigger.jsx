@@ -126,3 +126,30 @@ export default function EventTriggers() {
           <div className="stat-card"><div className="stat-value" style={{ color: 'var(--error)' }}>{stats.failed}</div><div className="stat-label">Failed</div></div>
         </div>
 
+        {/* Schedule Form */}
+        {showForm && (
+          <div className="card" style={{ marginBottom: '1.5rem', padding: '1.5rem' }}>
+            <h3 style={{ marginBottom: '1rem' }}>Schedule New Distribution</h3>
+            <div className="grid-3" style={{ gap: '1rem' }}>
+              <div className="form-group">
+                <label className="form-label">Scheme</label>
+                <select className="form-input" value={form.schemeId} onChange={e => setForm({ ...form, schemeId: e.target.value })}>
+                  <option value="">Select scheme</option>
+                  {schemes.map(s => <option key={s.id} value={s.id}>{s.name} (₹{s.per_citizen_amount})</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="form-label"><FiCalendar size={12} /> Date</label>
+                <input type="date" className="form-input" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} />
+              </div>
+              <div className="form-group">
+                <label className="form-label"><FiClock size={12} /> Time</label>
+                <input type="time" className="form-input" value={form.time} onChange={e => setForm({ ...form, time: e.target.value })} />
+              </div>
+            </div>
+            <button onClick={scheduleTrigger} className="btn btn-primary mt-1" disabled={!form.schemeId || !form.date || !form.time}>
+              Schedule Distribution
+            </button>
+          </div>
+        )}
+
