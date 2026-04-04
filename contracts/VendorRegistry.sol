@@ -32,12 +32,73 @@ contract VendorRegistry is AccessControl {
         uint256 registeredAt;
         uint256 approvedAt;
         bool rbiTransferConfirmed;   // Set true when RBI sends real INR
+    }
+
+    mapping(uint256 => Vendor) private _vendors;
+    mapping(address => uint256) public walletToVendorId;
+    uint256 private _vendorCounter;
+    uint256[] private _allVendorIds;
+
+    event VendorRegistered(uint256 indexed vendorId, address indexed wallet, VendorType vendorType);
+    event VendorApproved(uint256 indexed vendorId, uint256 timestamp);
+    event VendorRejected(uint256 indexed vendorId, uint256 timestamp);
+    event VendorSuspended(uint256 indexed vendorId, uint256 timestamp);
+    event ExchangeRequested(uint256 indexed vendorId, uint256 amount, uint256 timestamp);
+    event ITRVerified(uint256 indexed vendorId, uint256 timestamp);
+    event RBITransferConfirmed(uint256 indexed vendorId, uint256 amount, uint256 timestamp);
+    event TokensRevokedFromVendor(uint256 indexed vendorId, uint256 amount, uint256 timestamp);
+
+    constructor() {
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(ADMIN_ROLE, msg.sender);
+        _grantRole(RBI_ROLE, msg.sender);
+    }
+
+    /**
+     * @dev Register as a vendor. Called by vendor themselves via MetaMask.
+     */
+    function registerVendor(
+        VendorType vendorType,
+        string calldata businessName,
+        bytes32 credentialHash,
+        bytes32 bankAccountHash,
+        bytes32 ifscHash
+    ) external returns (uint256) {
+        require(walletToVendorId[msg.sender] == 0 ||
+                _vendors[walletToVendorId[msg.sender]].walletAddress == address(0),
+                "Wallet already registered as vendor");
+
+        uint256 vendorId = ++_vendorCounter;
+        _vendors[vendorId] = Vendor({
+            id: vendorId,
+            walletAddress: msg.sender,
+            vendorType: vendorType,
+            status: VendorStatus.Pending,
+            businessName: businessName,
+            credentialHash: credentialHash,
+            bankAccountHash: bankAccountHash,
+            ifscHash: ifscHash,
+            tokenBalance: 0,
+            exchangedAmount: 0,
+            exchangeStatus: ExchangeStatus.None,
+            exchangeRequestAmount: 0,
+            registeredAt: block.timestamp,
+            approvedAt: 0,
+            rbiTransferConfirmed: false
+        });
+
         walletToVendorId[msg.sender] = vendorId;
         _allVendorIds.push(vendorId);
 
         emit VendorRegistered(vendorId, msg.sender, vendorType);
         return vendorId;
     }
+
+    /**
+     * @dev Register a vendor by admin — auto-approved.
+     * Called by the backend using the deployer/admin signer when a vendor
+     * application is approved in the database.
+     */
     function registerVendorByAdmin(
         address vendorWallet,
         VendorType vendorType,
@@ -77,15 +138,24 @@ contract VendorRegistry is AccessControl {
         return vendorId;
     }
 
+    /**
+     * @dev Approve a pending vendor. Admin only.
+     */
+    function approveVendor(uint256 vendorId) external onlyRole(ADMIN_ROLE) {
+        Vendor storage vendor = _vendors[vendorId];
+        require(vendor.walletAddress != address(0), "Vendor does not exist");
+        require(vendor.status == VendorStatus.Pending, "Vendor not pending");
 
-    function approveVendor(uint256 vendorId) external onlyRole(ADMIN_ROLE){
-        vendor storage vendor = _vendor[vendorId];
-        require(vendor.walletAddress!=address(0),"vendor does not exist");
-        require(vendor status == VendorStatus.Pending,"vendor not verified");
-        vendor.approvedAt =block.timestamp;
-        emit VendorApproved(vendorId,block.timestamp);
+        vendor.status = VendorStatus.Approved;
+        vendor.approvedAt = block.timestamp;
+
+        emit VendorApproved(vendorId, block.timestamp);
     }
-     function rejectVendor(uint256 vendorId) external onlyRole(ADMIN_ROLE) {
+
+    /**
+     * @dev Reject a pending vendor. Admin only.
+     */
+    function rejectVendor(uint256 vendorId) external onlyRole(ADMIN_ROLE) {
         Vendor storage vendor = _vendors[vendorId];
         require(vendor.walletAddress != address(0), "Vendor does not exist");
         require(vendor.status == VendorStatus.Pending, "Vendor not pending");
@@ -172,9 +242,10 @@ contract VendorRegistry is AccessControl {
     function updateTokenBalance(uint256 vendorId, uint256 amount) external onlyRole(ADMIN_ROLE) {
         _vendors[vendorId].tokenBalance += amount;
     }
-}
-// view functions
-function isVerifiedVendor(address wallet) external view returns (bool) {
+
+    // ==================== VIEW FUNCTIONS ====================
+
+    function isVerifiedVendor(address wallet) external view returns (bool) {
         uint256 vid = walletToVendorId[wallet];
         return vid != 0 && _vendors[vid].status == VendorStatus.Approved;
     }
@@ -223,7 +294,4 @@ function isVerifiedVendor(address wallet) external view returns (bool) {
         }
         return confirmed;
     }
-
-
-
-
+}
