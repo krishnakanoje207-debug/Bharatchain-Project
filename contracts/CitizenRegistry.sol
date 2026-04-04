@@ -1,4 +1,4 @@
-// SPDX - License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/access/AccessControl.sol";
@@ -23,7 +23,7 @@ contract CitizenRegistry is AccessControl{
     bytes32 public constant DISTRIBUTOR_ROLE = keccak256("DISTRIBUTOR_ROLE");
     
     IZKVerifier public zkVerifier; // instance of the ZK verifier contract
-    enum CitizenStatus{Pending,Approved,Rejected,Funded};
+    enum CitizenStatus{Pending,Approved,Rejected,Funded}
 
     struct Citizen{ // Creating Citizen data record 
         uint256 id;
