@@ -19,3 +19,27 @@ app.use("/api/notifications", require("./routes/notifications"));
 app.use("/api/admin", require("./routes/admin"));
 app.use("/api/blockchain", require("./routes/blockchain"));
 app.use("/api/ledger", require("./routes/ledger"));
+
+app.get("/", (req, res) => {
+    res.json({
+        name: "BharatChain Backend API",
+        version: "3.0",
+        status: "running",
+        endpoints: {
+        auth: "POST /api/auth/signup, /login, /send-otp, /verify-otp",
+        verify: "POST /api/verify/citizen, GET /api/verify/schemes",
+        admin: "GET /api/admin/stats, /vendors, /citizens, /schemes, /event-triggers",
+        blockchain: "POST /api/blockchain/pay-vendor, GET /api/blockchain/wallet-info",
+        health: "GET /api/health"
+        }
+    });
+});
+
+app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+app.use((err, req, res, next) => {
+    console.error("Server error:", err);
+    res.status(500).json({ error: "Internal server error" });
+});
