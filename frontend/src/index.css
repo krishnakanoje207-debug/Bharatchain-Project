@@ -359,3 +359,24 @@ tr:hover td { background: var(--bg-glass); }
   50% { opacity: 0.5; }
 }
 .pulse { animation: pulse 2s ease-in-out infinite; }
+
+/* ==================== ADMIN LAYOUT ==================== */
+.admin-layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+.admin-sidebar {
+  width: var(--sidebar-width);
+  background: rgba(10, 14, 26, 0.98);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 200;
+  overflow-y: auto;
+  transition: width 0.3s ease;
+}
