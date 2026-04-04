@@ -562,3 +562,36 @@ router.get("/notifications/:userId", requireRole("admin", "rbi_admin"), async (r
     const notifications = await db.prepare("SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC").all(req.params.userId);
     res.json({ notifications });
 });
+
+//recent activities endpoint every transaction using gas
+router.get("/recent-activities", requireRole("admin", "rbi-admin"), async (req, res) => {
+    const db = req.app.locals.db;
+    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+
+    // Combine transaction_log + event_triggers into a unified activity feed
+    const transactions = await db.prepare(`
+        SELECT 'transaction' as source, tx_type as type, description as title, 
+            amount, from_address, to_address, tx_hash, created_at
+        FROM transaction_log ORDER BY created_at DESC LIMIT ?
+    `).all(limit);
+
+    const triggers = await db.prepare(`
+        SELECT 'trigger' as source, 
+            CASE WHEN et.status = 'Executed' THEN 'instalment' ELSE 'trigger_' || LOWER(et.status) END as type,
+            s.name || ' - Instalment #' || et.instalment_number as title,
+            s.per_citizen_amount as amount,
+            NULL as from_address, NULL as to_address, NULL as tx_hash,
+            COALESCE(et.executed_at, et.created_at) as created_at
+        FROM event_triggers et LEFT JOIN schemes s ON et.scheme_id = s.id
+        ORDER BY created_at DESC LIMIT ?
+    `).all(limit);
+
+    // Merge and sort by date
+    const activities = [...transactions, ...triggers]
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+        .slice(0, limit);
+
+    res.json({ activities });
+});
+
+module.exports = router;
