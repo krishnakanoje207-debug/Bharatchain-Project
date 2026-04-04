@@ -276,3 +276,49 @@ a:hover { color: var(--accent-secondary); }
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
+
+/* ==================== TABLE ==================== */
+.table-wrapper { overflow-x: auto; border-radius: var(--radius-md); }
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+th {
+  text-align: left;
+  padding: 0.75rem 1rem;
+  background: var(--bg-glass);
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--border);
+}
+td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-primary);
+}
+tr:hover td { background: var(--bg-glass); }
+
+/* ==================== SPECIAL ==================== */
+.gradient-text {
+  background: var(--accent-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.mono { font-family: var(--font-mono); font-size: 0.85rem; }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flex { display: flex; }
+.flex-between { display: flex; justify-content: space-between; align-items: center; }
+.flex-center { display: flex; align-items: center; justify-content: center; }
+.gap-1 { gap: 0.5rem; }
+.gap-2 { gap: 1rem; }
+.gap-3 { gap: 1.5rem; }
+.mt-1 { margin-top: 0.5rem; }
+.mt-2 { margin-top: 1rem; }
+.mt-3 { margin-top: 1.5rem; }
+.mb-1 { margin-bottom: 0.5rem; }
+.mb-2 { margin-bottom: 1rem; }
